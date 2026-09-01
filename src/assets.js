@@ -22,19 +22,19 @@ export const ASSET = {
   'logo': { src: "./assets/logo.png", webp: "./assets/logo.webp" },
 };
 export const ART = {
-'appletree': { src: "./art/appletree.jpg", webp: "./art/appletree.webp" },
+  'appletree': { src: "./art/appletree.jpg", webp: "./art/appletree.webp" },
   'booster': { src: "./art/booster.jpg", webp: "./art/booster.webp" },
   'final': { src: "./art/final.jpg", webp: "./art/final.webp" },
-'goldrush': { src: "./art/goldrush.jpg", webp: "./art/goldrush.webp" },
-'luckycat': { src: "./art/luckycat.jpg", webp: "./art/luckycat.webp" },
-'megajack': { src: "./art/megajack.jpg", webp: "./art/megajack.webp" },
-'miniscratch': { src: "./art/miniscratch.jpg", webp: "./art/miniscratch.webp" },
+  'goldrush': { src: "./art/goldrush.jpg", webp: "./art/goldrush.webp" },
+  'luckycat': { src: "./art/luckycat.jpg", webp: "./art/luckycat.webp" },
+  'megajack': { src: "./art/megajack.jpg", webp: "./art/megajack.webp" },
+  'miniscratch': { src: "./art/miniscratch.jpg", webp: "./art/miniscratch.webp" },
   'mystery': { src: "./art/mystery.jpg", webp: "./art/mystery.webp" },
-'quickcash': { src: "./art/quickcash.jpg", webp: "./art/quickcash.webp" },
-'sanddollars': { src: "./art/sanddollars.jpg", webp: "./art/sanddollars.webp" },
-'seaturtle': { src: "./art/seaturtle.jpg", webp: "./art/seaturtle.webp" },
-'snakeeyes': { src: "./art/snakeeyes.jpg", webp: "./art/snakeeyes.webp" },
-'twowin': { src: "./art/twowin.jpg", webp: "./art/twowin.webp" },
+  'quickcash': { src: "./art/quickcash.jpg", webp: "./art/quickcash.webp" },
+  'sanddollars': { src: "./art/sanddollars.jpg", webp: "./art/sanddollars.webp" },
+  'seaturtle': { src: "./art/seaturtle.jpg", webp: "./art/seaturtle.webp" },
+  'snakeeyes': { src: "./art/snakeeyes.jpg", webp: "./art/snakeeyes.webp" },
+  'twowin': { src: "./art/twowin.jpg", webp: "./art/twowin.webp" },
 };
 
 export function pick(a) {          // <picture>-ready source pair

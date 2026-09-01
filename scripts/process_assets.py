@@ -107,12 +107,9 @@ def master_foil(name, maxw=760):
     re-running never compounds compression loss."""
     raw = os.path.join(RAW, name + '.png')
     cur = os.path.join(IMG, name + '.jpg')
-    src = raw if os.path.exists(raw) else cur
-    if os.path.exists(cur) and not os.path.exists(raw):
-        Image.open(cur).convert('RGB').save(raw, 'PNG')      # snapshot the master
-        src = raw
-    if not os.path.exists(src):
-        return False
+    if not os.path.exists(raw):
+        return False        # never re-master from an already-processed jpg (that compounds loss)
+    src = raw
     rng = np.random.default_rng(11)
     im = Image.open(src).convert('L').resize((maxw, maxw), Image.LANCZOS)
     a = np.asarray(im).astype(np.float32) / 255.0
@@ -148,7 +145,6 @@ def master_foil(name, maxw=760):
 ASSETS = ['ticket', 'bot-gold', 'bot-diamond', 'coins', 'gift', 'crown', 'logo']
 TEXTURES = {
     'bg-wood': (1280, 72), 'bg-metal': (1024, 72), 'bg-felt': (1024, 70), 'foil-gold': (760, 80), 'foil-rose': (760, 80),
-    'cursor-coin': (256, 88), 'prop-phone': (420, 84), 'prop-trash': (420, 84), 'badge-seal': (420, 88),
     'foil-neon': (760, 80), 'foil-carbon': (760, 80),
     'card-gems': (820, 78), 'card-fruits': (820, 78),
     'card-cyber': (820, 78), 'card-aztec': (820, 78),
@@ -188,14 +184,22 @@ for n, (mw, q) in TEXTURES.items():
     if n in FOIL_TINTS:
         if master_foil(n):
             print(f'  ✓ {n} (metal-mastered)')
+        elif os.path.exists(os.path.join(IMG, n + '.jpg')):
+            print(f'  · {n} (shipped foil kept; no assets/raw master)')
         else:
             print(f'  ! missing {n}')
         continue
-    p = os.path.join(IMG, n + '.jpg')
-    if not os.path.exists(p):
-        print(f'  ! missing {p}'); continue
-    save_tex(n, Image.open(p), mw, q)
-    print(f'  ✓ {n}')
+    raw = os.path.join(RAW, n + '.png')
+    if os.path.exists(raw):
+        save_tex(n, Image.open(raw), mw, q)
+        print(f'  ✓ {n}')
+        continue
+    # No source render in assets/raw. Re-encoding public/img/<n>.jpg would add a second lossy
+    # generation, so the shipped texture is left untouched — src/assets.js still maps it.
+    if os.path.exists(os.path.join(IMG, n + '.jpg')):
+        print(f'  · {n} (shipped texture kept; no assets/raw source)')
+    else:
+        print(f'  ! missing {n}')
 
 print('— ticket art (full-bleed) —')
 ART_DIR = os.path.join(ROOT, 'public', 'art')
@@ -216,6 +220,14 @@ for f in sorted(os.listdir(RAW)):
         print('  (webp failed:', e, ')')
     ART_IDS.append(tid)
     print(f'  ✓ art/{tid}  {im.size[0]}x{im.size[1]}')
+
+# Ship-ready art may exist in public/art without a source render in assets/raw (e.g. a clone
+# that skips the big PNG sources). Keep those ids so re-running this script never un-maps them.
+for f in sorted(os.listdir(ART_DIR)):
+    if f.endswith(('.jpg', '.webp')) and os.path.splitext(f)[0] not in ART_IDS:
+        ART_IDS.append(os.path.splitext(f)[0])
+if ART_IDS:
+    print(f'  · {len(ART_IDS)} ticket art ids registered')
 
 # ---------- src/assets.js ----------
 def urls(name, folder, exts):

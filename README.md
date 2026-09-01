@@ -111,6 +111,11 @@ itself with that environment, so `npm run shots` just works.
 
 Add a render to `assets/raw/` (pure white background, 4:5 for card art) and run `npm run assets`:
 backgrounds are flooded out, alpha-cropped, WebP+PNG/JPEG encoded, and `src/assets.js` is rewritten.
+`npm run assets` is idempotent on purpose: any texture, foil or ticket art that has no source
+render in `assets/raw/` is left untouched (re-encoding a processed jpg would add a second lossy
+generation), and every id present in `public/art/` stays registered in `src/assets.js` — so a
+clone that skips the 15 MB of source PNGs still builds with all 13 ticket arts.
+
 Ticket art is looked up by ticket id (`ART[id]`) with the shared `card-*` textures as fallback, so
 `mystery`, `booster` and `final` still look right until their own `assets/raw/art-<id>.png` lands —
 drop the file in and re-run `npm run assets`, nothing else to change.
