@@ -25,14 +25,22 @@ npm run preview:static  # render the real screens to preview.html (no browser ne
 
 ## 2. Deploy to GitHub Pages (2 minutes)
 
+**Already deployed:** <https://jackbhai.github.io/scratchverse/> (source:
+<https://github.com/jackbhai/scratchverse>, branch `main`).
+
+For a fresh repo:
+
 1. New repo → upload this folder → default branch `main`.
 2. **Settings → Pages → Build and deployment: Source = GitHub Actions.**
 3. Push. `.github/workflows/deploy.yml` builds `dist/` and publishes it.
-   Live at `https://<user>.github.io/<repo>/`.
+   Live at `https://<user>.github.io/<repo>/`. Any push to `main` redeploys (~40 s).
 
 `vite.config.js` uses `base: './'` (relative asset URLs) so the same build works on a project
 page, a custom domain, or by double-clicking `dist/index.html`. `scripts/gen-manifest.mjs`
-writes `404.html` (SPA fallback) and the PWA manifest (portrait, standalone).
+writes `404.html` (SPA fallback) and the PWA manifest (portrait, standalone, 192/512/maskable
+icons from `public/icons/`). `public/sw.js` is the offline shell: cache-first for content-hashed
+assets, network-first for `index.html`, and it is registered only in production builds
+(`src/main.jsx`) so `npm run dev` never caches you out.
 
 Manual alternative: `npm run build && npx gh-pages -d dist`.
 
@@ -65,7 +73,7 @@ Manual alternative: `npm run build && npx gh-pages -d dist`.
 - **Transparent fairness panel**: every ticket shows win chance, EV/player-return and pool maths.
 - **XP + levels** with coin bonuses, live bot feed log, daily stash with streak + JP.
 - WebP textures with PNG fallback, ~5 MB total, no runtime image re-encode.
-- One-command CI deploy, PWA manifest, 404 SPA fallback, `no-undef`-clean lint, 215-assertion test suite (incl. an asset-integrity test that fails if any `src/assets.js` entry is missing from `public/`).
+- One-command CI deploy, installable PWA + offline service worker, 404 SPA fallback, `no-undef`-clean lint, 215-assertion test suite (incl. an asset-integrity test that fails if any `src/assets.js` entry is missing from `public/`).
 
 ## 3b. 3D art pipeline (how the props get into the UI)
 
