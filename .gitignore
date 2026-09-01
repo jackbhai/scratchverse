@@ -1,0 +1,12 @@
+node_modules
+dist-ssr
+.DS_Store
+*.local
+.vite
+# build / QA artefacts (regenerate with: npm run build | npm run shots)
+dist
+dist-test
+preview.html
+shots/
+.browser-libs/
+scratchverse-*.zip
