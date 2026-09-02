@@ -2,7 +2,7 @@
    Vite emits content-hashed JS/CSS, so cache-first is always safe; the only
    un-hashed files are index.html / 404.html / manifest, which we network-first.
    Registered from src/main.jsx in production builds only. */
-const CACHE = 'scratchverse-v2';
+const CACHE = 'scratchverse-v3'; // v3: the paper-seal build — old foil assets must not survive
 const SHELL = ['./', './index.html', './404.html', './manifest.webmanifest'];
 const NETWORK_FIRST = /^(.*\/)?(index\.html|404\.html|manifest\.webmanifest|\.)$/;
 
