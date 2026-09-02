@@ -1,42 +1,86 @@
 #!/usr/bin/env python3
-"""Montage every screenshot in shots/ into a labelled contact sheet."""
-import os, glob
+"""Montage the screenshot run into shots/contact-sheet.png (labels + dark grid).
+
+Purely a review aid: it only reads PNGs already in shots/, so it is safe to run
+after any `npm run shots`. Usage: python3 scripts/contact-sheet.py [cols]
+"""
+import os
+import sys
+
 from PIL import Image, ImageDraw, ImageFont
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-S = os.path.join(ROOT, 'shots')
-files = sorted(glob.glob(os.path.join(S, '*.png')))
-files = [f for f in files if 'contact' not in os.path.basename(f)]
-if not files:
-    raise SystemExit('no shots/*.png yet — run npm run shots')
+SHOTS = os.path.join(ROOT, 'shots')
+OUT = os.path.join(SHOTS, 'contact-sheet.png')
+BG = (6, 6, 8)
+FG = (238, 240, 246)
+DIM = (150, 156, 170)
+GOLD = (232, 200, 138)
 
-def font(sz):
-    for p in ('/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
-              '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'):
-        if os.path.exists(p):
-            return ImageFont.truetype(p, sz)
+
+def font(size, bold=True):
+    for path in (
+        '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf' if bold else '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
+        '/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf',
+    ):
+        if os.path.exists(path):
+            try:
+                return ImageFont.truetype(path, size)
+            except OSError:
+                pass
     return ImageFont.load_default()
 
-TILE_H = int(os.environ.get('SHEET_TILE_H', 620))
-PAD, LAB = 26, 40
-cols = min(int(os.environ.get('SHEET_COLS', 4)), len(files))
-rows = (len(files) + cols - 1) // cols
-cell_w = int(TILE_H * 390 / 844)
-sheet = Image.new('RGB', (cols * (cell_w + PAD) + PAD, rows * (TILE_H + LAB + PAD) + PAD), (11, 13, 20))
-d = ImageDraw.Draw(sheet)
-d.text((PAD, 14), 'ScratchVerse — real build, Chromium screenshots (390x844 @3x)', font=font(22), fill=(232, 186, 92))
-for i, f in enumerate(files):
-    im = Image.open(f).convert('RGB')
-    h = TILE_H
-    w = int(im.width * h / im.height)
-    if w > cell_w:
-        w = cell_w; h = int(im.height * w / im.width)
-    im = im.resize((w, h), Image.LANCZOS)
-    r, c = divmod(i, cols)
-    x = PAD + c * (cell_w + PAD); y = PAD + 34 + r * (TILE_H + LAB + PAD)
-    d.rounded_rectangle([x - 3, y - 3, x + cell_w + 3, y + TILE_H + 3], 14, outline=(38, 43, 58), width=2)
-    sheet.paste(im, (x, y))
-    d.text((x, y + TILE_H + 8), os.path.basename(f)[:-4], font=font(17), fill=(180, 190, 210))
-out = os.path.join(S, 'contact-sheet.png')
-sheet.save(out, 'PNG', optimize=True)
-print(f'✓ {out}  {sheet.size[0]}x{sheet.size[1]}  ({len(files)} shots)')
+
+def main():
+    cols = int(sys.argv[1]) if len(sys.argv) > 1 else 4
+    names = sorted(
+        f for f in os.listdir(SHOTS)
+        if f.endswith('.png') and f != os.path.basename(OUT) and not f.startswith('hero')
+    )
+    if not names:
+        print(f'! no screenshots in {SHOTS} — run `npm run shots` first')
+        return 1
+    label_h, gap, pad = 34, 14, 26
+    thumb_w = 300
+    rows = (len(names) + cols - 1) // cols
+    heights = []
+    for r in range(rows):
+        h = 0
+        for c in range(cols):
+            i = r * cols + c
+            if i >= len(names):
+                continue
+            with Image.open(os.path.join(SHOTS, names[i])) as im:
+                k = thumb_w / im.width
+                h = max(h, int(im.height * k))
+        heights.append(h)
+    sheet_h = pad * 2 + 52 + sum(heights) + rows * (label_h + gap) + (rows - 1) * gap
+    sheet_w = pad * 2 + cols * thumb_w + (cols - 1) * gap
+    sheet = Image.new('RGB', (sheet_w, sheet_h), BG)
+    d = ImageDraw.Draw(sheet)
+    d.text((pad, pad), 'ScratchVerse 2.0 — vector-only visuals, AMOLED dark, portrait 390×844', font=font(26), fill=GOLD)
+    d.text((pad, pad + 32), f'{len(names)} frames · every ticket face, foil and glyph is drawn from data (no bitmaps)', font=font(15, False), fill=DIM)
+
+    y = pad + 52
+    for r in range(rows):
+        x = pad
+        for c in range(cols):
+            i = r * cols + c
+            if i >= len(names):
+                continue
+            path = os.path.join(SHOTS, names[i])
+            im = Image.open(path).convert('RGB')
+            k = thumb_w / im.width
+            im = im.resize((thumb_w, int(im.height * k)), Image.LANCZOS)
+            sheet.paste(im, (x, y))
+            d.rectangle([x, y, x + thumb_w - 1, y + im.height - 1], outline=(34, 36, 42))
+            d.text((x + 2, y + im.height + 8), os.path.splitext(names[i])[0], font=font(14, False), fill=FG)
+            x += thumb_w + gap
+        y += heights[r] + label_h + gap
+    sheet.save(OUT, optimize=True)
+    print(f'✓ {OUT}  ({sheet_w}×{sheet_h}, {len(names)} frames)')
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())

@@ -17,7 +17,7 @@ const { initialState } = await import(pathToFileURL(resolve(ROOT, 'src/db/store.
 const N = +(process.env.N || 30000);
 
 // target expected return as a multiple of ticket price (in config so the game + tests share it)
-export const TARGETS = EV_TARGET;   // 'final' is a story ticket: fixed payout by design
+export const TARGETS = EV_TARGET; // 'final' is a story ticket: fixed payout by design
 
 const sim = (s, ticket) => {
   let tot = 0;
@@ -26,17 +26,26 @@ const sim = (s, ticket) => {
 };
 const base = () => {
   const s = initialState();
-  s.balance = 1e14; s.lifetime = { earn: 1e14, spent: 0, jp: 0 };
+  s.balance = 1e14;
+  s.lifetime = { earn: 1e14, spent: 0, jp: 0 };
   s.run = { earn: 1e14, spent: 0, peak: 1e14 };
   return s;
 };
 
 let out = [];
 for (const t of TICKETS) {
-  const target = TARGETS[t.id]; if (!target) { out.push([t.id, sim(base(), t), 0, 1]); continue; }
+  const target = TARGETS[t.id];
+  if (!target) {
+    out.push([t.id, sim(base(), t), 0, 1]);
+    continue;
+  }
   let ratio = sim(base(), t);
-  if (!isFinite(ratio) || ratio <= 0) { out.push([t.id, ratio, target, 1]); continue; }
-  let factor = target / ratio, applied = 1;
+  if (!Number.isFinite(ratio) || ratio <= 0) {
+    out.push([t.id, ratio, target, 1]);
+    continue;
+  }
+  let factor = target / ratio,
+    applied = 1;
   for (let pass = 0; pass < 3; pass++) {
     scalePays(t, factor);
     ratio = sim(base(), TICKET_BY_ID[t.id]);
@@ -47,7 +56,7 @@ for (const t of TICKETS) {
   out.push([t.id, ratio, target, applied]);
 }
 function scalePays(ticket, f) {
-  ticket.syms.forEach((sy) => {
+  ticket.syms.forEach(sy => {
     if (sy.pay > 0 && !sy.final) sy.pay = +(sy.pay * f).toPrecision(3) * 1;
     if (sy.pay > 0) sy.pay = +sy.pay.toPrecision(3);
   });
@@ -59,21 +68,35 @@ for (const [id, r, tg, f] of out) {
 }
 if (process.argv.includes('--check')) {
   const bad = out.filter(([id, r]) => TARGETS[id] && Math.abs((r ?? 0) - TARGETS[id]) > 0.1);
-  console.log(bad.length ? `\n❌ ${bad.length} tickets out of band: ${bad.map(b => b[0]).join(', ')}` : '\n✅ all tickets inside ±10% of target');
+  console.log(
+    bad.length
+      ? `\n❌ ${bad.length} tickets out of band: ${bad.map(b => b[0]).join(', ')}`
+      : '\n✅ all tickets inside ±10% of target'
+  );
   process.exit(bad.length ? 1 : 0);
 } else {
   // rewrite config pay values positionally (symbol order is stable in the config)
   let src = readFileSync(CFG, 'utf8');
   for (const t of TICKETS) {
     const idAt = src.indexOf(`id: '${t.id}'`);
-    if (idAt < 0) { console.log('! missing ticket', t.id); continue; }
+    if (idAt < 0) {
+      console.log('! missing ticket', t.id);
+      continue;
+    }
     const open = src.indexOf('syms: [', idAt);
-    if (open < 0) { console.log('! no syms for', t.id); continue; }
-    let depth = 0, i = src.indexOf('[', open);
+    if (open < 0) {
+      console.log('! no syms for', t.id);
+      continue;
+    }
+    let depth = 0,
+      i = src.indexOf('[', open);
     const start = i;
     for (; i < src.length; i++) {
       if (src[i] === '[') depth++;
-      else if (src[i] === ']') { depth--; if (depth === 0) break; }
+      else if (src[i] === ']') {
+        depth--;
+        if (depth === 0) break;
+      }
     }
     let body = src.slice(start, i + 1);
     let n = 0;

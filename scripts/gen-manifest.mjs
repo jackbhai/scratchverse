@@ -32,8 +32,5 @@ try {
 } catch {}
 
 writeFileSync(resolve(dist, 'manifest.webmanifest'), JSON.stringify(manifest, null, 2));
-writeFileSync(
-  resolve(dist, '404.html'),
-  readFileSync(resolve(dist, 'index.html'), 'utf8').replace('<title>', '<title>404 · ')
-);
+writeFileSync(resolve(dist, '404.html'), readFileSync(resolve(dist, 'index.html'), 'utf8').replace('<title>', '<title>404 · '));
 console.log('✓ manifest.webmanifest + 404.html written to dist/');

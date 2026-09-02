@@ -1,38 +1,45 @@
 {
   "name": "scratchverse",
   "private": true,
-  "version": "1.0.0",
+  "version": "2.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "vite build && node scripts/gen-manifest.mjs",
     "preview": "vite preview --host 0.0.0.0",
-    "assets": "python3 scripts/synth-textures.py && python3 scripts/process_assets.py && node scripts/copy-fonts.mjs",
-    "tune": "node scripts/tune.mjs",
-    "test": "bash scripts/run-tests.sh",
-    "lint": "eslint src scripts --ext .js,.jsx,.mjs",
-    "preview:static": "node scripts/preview-render.mjs",
-    "shots": "bash scripts/ensure-browser-libs.sh && node scripts/shots.mjs",
-    "contact": "python3 scripts/contact-sheet.py",
     "fonts": "node scripts/copy-fonts.mjs",
-    "hero": "python3 scripts/hero.py"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "biome check src scripts tests",
+    "fmt": "biome format --write src scripts tests",
+    "test": "vitest run && bash scripts/run-tests.sh",
+    "test:unit": "vitest run",
+    "test:integration": "bash scripts/run-tests.sh",
+    "tune": "node scripts/tune.mjs",
+    "shots": "bash scripts/ensure-browser-libs.sh && node scripts/shots.mjs",
+    "verify": "npm run typecheck && npm run lint && npm test && npm run tune -- --check && npm run build",
+    "contact": "python3 scripts/contact-sheet.py"
   },
   "dependencies": {
     "dexie": "^4.0.8",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "immer": "^10.1.1",
+    "motion": "^12.23.6",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "zod": "^3.25.76",
+    "zustand": "^5.0.6"
   },
   "devDependencies": {
-    "@eslint/js": "^10.0.1",
-    "@fontsource/manrope": "^5.3.0",
-    "@fontsource/noto-color-emoji": "^5.3.1",
-    "@fontsource/sora": "^5.3.0",
-    "@vitejs/plugin-react": "^4.3.1",
-    "esbuild": "^0.28.2",
-    "eslint": "^10.9.1",
-    "globals": "^17.12.0",
-    "jsdom": "^29.1.1",
+    "@biomejs/biome": "^2.5.11",
+    "@fontsource/manrope": "^5.2.5",
+    "@fontsource/sora": "^5.2.5",
+    "@testing-library/dom": "^10.4.0",
+    "@testing-library/react": "^16.3.0",
+    "@vitejs/plugin-react": "^4.6.0",
+    "esbuild": "^0.25.5",
+    "jsdom": "^26.1.0",
     "playwright-core": "^1.56.0",
-    "vite": "^5.4.8"
+    "typescript": "^5.8.3",
+    "vite": "^7.0.0",
+    "vitest": "^3.2.4"
   }
 }

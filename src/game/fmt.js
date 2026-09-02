@@ -15,7 +15,7 @@ export function fmt(n, dp = 0) {
   return neg + (n / Math.pow(10, e)).toFixed(2).replace(/\.?0+$/, '') + 'e' + e;
 }
 
-export const fmtFull = (n) => {
+export const fmtFull = n => {
   n = Number(n) || 0;
   if (Math.abs(n) >= 1e15) return fmt(n);
   return n.toLocaleString('en-IN', { maximumFractionDigits: Math.abs(n) < 100 ? 2 : 0 });
@@ -27,7 +27,7 @@ export function pct(x, d = 1) {
   return (x * 100).toFixed(d) + '%';
 }
 
-export const signed = (n) => (n >= 0 ? '+' : '−') + fmt(Math.abs(n));
+export const signed = n => (n >= 0 ? '+' : '−') + fmt(Math.abs(n));
 
 export function mmss(ms) {
   ms = Math.max(0, ms);

@@ -42,11 +42,11 @@ It is landscape, pixel-art, mouse-driven, table-of-cards metaphor.
 ## C. ScratchVerse port (same loop, better on mobile)
 | Original | ScratchVerse |
 |---|---|
-| landscape pixel table | **portrait**, premium dark glass UI, 3D AI-rendered props |
+| landscape pixel table | **portrait**, AMOLED-black UI, all-vector chrome (no bitmaps at all) |
 | coin cursor | **finger scratch** w/ pressure-ish speed response, haptics, per-coin brush sizes |
-| silver coating | **real foil textures** (gold / rose / neon / carbon) with edge glints + crumbling |
+| silver coating | **painted metal foil** (champagne gold / rose / ice neon / platinum) drawn from an SVG gradient + engraved guilloché, torn-lip glints, WAAPI shavings |
 | symbol panel | animated odds sheet + EV% + "fairness" maths shown |
-| bot on table | **bot stage**: Gold bot + Diamond VIP bot sprites, live scratch, feed log |
+| bot on table | **bot stage**: engraved bot glyph (diamond-crested once Jack Echo is bought), live scratch, feed log |
 | fan | Fan gadget = auto-feed queue → table with flying-card animation |
 | sticky mat | Sticky Mat zone: pinned tickets are bot-immune; super jackpots auto-park there |
 | Mundo (cat) | Mundo auto-claim with paw animation + park-super-jackpot rule |
@@ -68,16 +68,21 @@ It is landscape, pixel-art, mouse-driven, table-of-cards metaphor.
 6. Zero-backend mobile DB save w/ versioned schema + backup code (original only had a save string in settings).
 7. Ship-ready: GitHub Pages relative-base build, PWA manifest, `404.html` SPA fallback, one-action CI.
 
-## 6. Visual parity added in this pass (after screenshot review)
+## 6. Visual parity (v2 — the all-vector pass)
+
+The AI-rendered bitmap pipeline (`public/art`, `public/assets`, `public/img`, `assets/raw`,
+`scripts/process_assets.py`, `src/assets.js`) was **deleted**: generated PNG/JPEG/WebP cosmetics read as
+stock art and cost 11 MB. Everything visual is now SVG + CSS + a canvas paint call, so the whole shipped
+dist is 1.4 MB (172 kB JS + 32 kB CSS + 115 kB fonts) and the app has zero image requests.
 
 | original element | ScratchVerse now |
 |---|---|
-| unique artwork per ticket | 10 AI-rendered 4:5 card arts (`public/art/<id>`), used on the table card, catalogue rows, tray + sticky-mat thumbs; the 3 not yet rendered fall back to the shared card textures |
-| metallic scratch foil | `process_assets.py` metal-masters the AI grain: brushed streaks + engraved guilloché + sheen bands + foil flakes, tinted per skin (gold/rose/neon/carbon) |
-| wooden table | procedural walnut plank surface (`scripts/synth-textures.py`) is the default table mat; felt / steel / gems / neon are Night-Market unlocks |
+| unique artwork per ticket | every ticket's face is **generated from its own data** (`TicketFace`): PRNG-seeded guilloché field, double hairline frame, catalogue + price rail, motif glyph, name plate. Same drawing on the table, catalogue rows, tray and mat thumbs — and 13/13 are bespoke, not 10/13 |
+| metallic scratch foil | the canvas *paints* it: `foilSvg(skin)` → `createPattern`, security-line engraving, per-cell wells, catalogue tint overlay, vignette, microprint band. Re-tinted by skin, never a texture file |
+| wooden table | five CSS-only table themes (`MATS_CSS`): Pure Noir default, Oxblood Felt free, then Emerald Felt / Graphite Desk / Platinum Rail as Night-Market token unlocks |
 | coin cursor that scales with Iron Coin | a gold-coin ghost follows the pointer over the card, sized from `stats(s).brush`, hidden on touch and in reduce-effects mode |
 | red rotary phone on the table | inline-SVG phone prop in the table header; shakes + red dot while the Corporation call is queued, opens the endings sheet |
-| crisp typography offline | Sora + Manrope self-hosted (`public/fonts`, `npm run fonts`) — no Google-Fonts dependency, so the PWA is truly offline |
+| crisp typography offline | Sora + Manrope self-hosted and bundled by Vite (`src/fonts`, `npm run fonts`) — no Google-Fonts dependency, so the PWA is truly offline |
 
 Everything above is verified by real Chromium screenshots (`npm run shots` → `shots/*.png`, `shots/contact-sheet.png`, `shots/hero.png`) and the app-error check in `shots/errors.txt`.
 
@@ -100,7 +105,7 @@ what is genuinely identical, what is an approximation, and what is missing.
 | Prestige | Jack Points, permanent nodes | 7-node JP tree, `PRESTIGE_BASE` 2.5e7 |
 | Day Job | wash plates for non-ticket income, plates can break | plate-washing card + `job` upgrade + break risk |
 | Hazards | Sea Turtle punishes over-scratching, Sand Dollars penalty cells | both, plus Hazard Shield JP node |
-| Night Market | achievement tokens → cosmetics | 4 foils + 5 table surfaces |
+| Night Market | achievement tokens → cosmetics | 4 metal coatings + 5 table themes, all vector; swatches are the same `metalCss`/`MATS_CSS` the app actually paints with |
 | Endings | phone call / Corporation finale | Claim / hang up / 60-second "hands off" sheet with badges |
 | Save | local save, export/import in settings | IndexedDB + `SV1.` export/import code, offline PWA |
 
@@ -111,6 +116,8 @@ what is genuinely identical, what is an approximation, and what is missing.
 - **Animations** — built from written descriptions and layout notes of the original, never frame-compared
   against its video: foil tears, symbol `pop`, stamp, coin rain, phone ring-shake, bot bob, screen fade.
   Nothing was "captured" from the original's footage, so treat per-animation fidelity as designed, not matched.
+- **Symbol art** — the original draws little pixel illustrations; here every symbol is a monoline icon from
+  `src/ui/icons.jsx` (90+ glyphs, one stroke weight, colour-coded by catalogue). Same information, different medium.
 - **Numbers** — payouts are tuned into a ±10 % EV band by `scripts/tune.mjs --check`; the itch.io demo's
   exact values are not the full game's, so they were not copied.
 - **Layout** — portrait-only, dark premium (per brief). The original is a desktop window; its mobile port is
@@ -121,4 +128,6 @@ what is genuinely identical, what is an approximation, and what is missing.
 - 34 Steam achievements (and Game Center / Play Games achievements + cloud save). Here: 12 local
   achievements feeding the Night Market only — no platform layer is reachable from a static site.
 - The one-time supporter purchase (a store SKU, not a game system).
-- Bespoke pixel art and hand-drawn UI chrome of the original; here it is AI-generated texture/ticket art.
+- Bespoke pixel art and hand-drawn UI chrome of the original. Here the equivalent is procedurally drawn
+  vector art (`TicketFace` + the icon registry), which is arguably better for a 1.4 MB offline build — but it
+  is not the original's hand-drawn look.

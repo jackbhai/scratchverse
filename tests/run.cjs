@@ -1,6 +1,9 @@
 /* ScratchVerse — assertion suite (pure rules + real React mount) */
 const path = require('node:path');
+const fs = require('node:fs');
 import App from '../src/App.jsx';
+import { hasIcon, iconNames } from '../src/ui/icons.jsx';
+import { MATS_CSS, SKIN_METAL } from '../src/ui/art.jsx';
 const ROOT = path.resolve(__dirname, '..');
 
 let fails = 0, passes = 0;
@@ -13,7 +16,6 @@ const near = (name, a, b, tol) => ok(`${name} (${a})`, Math.abs(a - b) <= tol, `
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 module.exports.run = async function run() {
-  AppMod = require('../src/App.jsx').default;
   console.log('\n[1] config integrity');
   const C = await import(path.join(ROOT, 'src/game/config.js'));
   const { TICKETS, TICKET_BY_ID, COINS, UPGRADES, GADGETS, JP_NODES, ACHIEVEMENTS, SKINS, CATALOGS } = C;
@@ -21,10 +23,10 @@ module.exports.run = async function run() {
   for (const t of TICKETS) {
     ok(`${t.id}: grid price>0`, t.price > 0);
     ok(`${t.id}: symbols defined`, t.syms.length >= 3, JSON.stringify(t.syms.map(s => s.e)));
-    ok(`${t.id}: every symbol has an emoji`, t.syms.every(s => typeof s.e === 'string' && s.e.length > 0), JSON.stringify(t.syms.map(s => s.e)));
+    ok(`${t.id}: every symbol names a real icon`, t.syms.every(s => hasIcon(s.e)), JSON.stringify(t.syms.map(s => s.e)));
     ok(`${t.id}: weights positive`, t.syms.every(s => s.w > 0));
     ok(`${t.id}: hardness 1..4`, t.hardness >= 1 && t.hardness <= 4);
-    ok(`${t.id}: art+foil exist`, !!C.SKINS.find(s => s.foil) && !!t.art);
+    ok(`${t.id}: vector face data (motif + tint, no bitmap)`, hasIcon(t.motif) && /^#[0-9a-f]{6}$/i.test(t.tint) && !('art' in t) && !('img' in t), `${t.motif}/${t.tint}`);
     if (t.hazard) ok(`${t.id}: hazard has a marked symbol`, t.syms.some(s => s.hazard));
     if (t.need) ok(`${t.id}: need <= 9`, t.need <= 9);
   }
@@ -35,30 +37,52 @@ module.exports.run = async function run() {
   ok('upgrades have cost curve', UPGRADES.every(u => u.base > 0 && u.k > 1 && u.max > 0));
   ok('achiev tests callable', ACHIEVEMENTS.every(a => typeof a.test === 'function'));
   ok('Final Chance needs JP', !!TICKET_BY_ID.final.jpCost);
-  ok('skins map to real textures', SKINS.every(s => /foil-/.test(s.foil)));
+  ok('every cosmetic/currency icon resolves',
+    [...SKINS, ...C.MATS, ...UPGRADES, ...GADGETS, ...JP_NODES, ...ACHIEVEMENTS, ...Object.values(C.ENDINGS)]
+      .every(x => !x.icon && !x.motif ? true : hasIcon(x.icon || x.motif)),
+    [...SKINS, ...UPGRADES, ...GADGETS, ...JP_NODES, ...ACHIEVEMENTS].map(x => x.icon || x.motif).filter(k => !hasIcon(k)).join(','));
+  ok('skins map to a real metal', C.SKINS.every(s => SKIN_METAL[s.foil]), C.SKINS.map(s => s.foil).join('/'));
+  ok('every table theme is pure CSS', C.MATS.every(m => typeof MATS_CSS[m.id] === 'string' && !/url\(/.test(MATS_CSS[m.id])), C.MATS.map(m => m.id).join('/'));
 
-  // ---- asset integrity: every registered texture must actually be on disk ----
-  const fs = require('node:fs');
+  // ---- "no fake cosmetics" integrity: the bitmap pipeline must be gone ----
   const DBS = await import(path.join(ROOT, 'src/db/store.js'));
-  const M = await import(path.join(ROOT, 'src/assets.js'));
-  const rel = (u) => path.join(ROOT, 'public', u.replace(/^\.\//, ''));
-  const missing = [];
-  for (const [name, pair] of Object.entries({ ...M.IMG, ...M.ASSET })) {
-    if (!fs.existsSync(rel(pair.src))) missing.push(name + ' (jpg/png)');
-    if (pair.webp && !fs.existsSync(rel(pair.webp))) missing.push(name + ' (webp)');
-  }
-  for (const [tid, pair] of Object.entries(M.ART)) {
-    if (!fs.existsSync(rel(pair.src))) missing.push('art/' + tid);
-  }
-  ok('every asset.js entry exists in public/', missing.length === 0, missing.slice(0, 6).join(', '));
-  ok('table surfaces = 5, walnut is default + owned',
-    C.MATS.length === 5 && C.MATS[0].id === 'wood'
-    && DBS.initialState().matBg === 'wood' && DBS.initialState().matsOwned.wood === true
-    && DBS.initialState().matsOwned.felt === true, C.MATS.map(m => m.id).join('/'));
-  ok('each surface has a real texture file', C.MATS.every((m) => M.IMG[m.img] && fs.existsSync(rel(M.IMG[m.img].src))),
-    C.MATS.map((m) => m.img).join('/'));
-  ok('late tickets have bespoke art', ['mystery', 'booster', 'final'].every((t) => M.ART[t]),
-    ['mystery', 'booster', 'final'].filter((t) => !M.ART[t]).join(','));
+  const EMOTE = /[\u{1F000}-\u{1FAFF}\u{2300}-\u{27BF}\u{2B00}-\u{2BFF}\u{FE0F}\u{200D}]/u;
+  const walk = (dir, out = []) => {
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      const f = path.join(dir, e.name);
+      if (e.isDirectory()) walk(f, out); else if (/\.(js|jsx)$/.test(e.name)) out.push(f);
+    }
+    return out;
+  };
+  const srcFiles = walk(path.join(ROOT, 'src'));
+  const emojiIn = srcFiles.filter((f) => {
+    const text = fs.readFileSync(f, 'utf8').split('\n').filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n');
+    return EMOTE.test(text);
+  });
+  ok('no emoji left in the app source (icons are the registry, not unicode)', emojiIn.length === 0, emojiIn.map(f => path.relative(ROOT, f)).join(', '));
+  ok('icon registry is non-trivial', iconNames().length >= 60, String(iconNames().length));
+  ok('no raster asset directories remain', ['public/art', 'public/assets', 'public/img', 'assets'].every((d) => !fs.existsSync(path.join(ROOT, d))),
+    ['public/art', 'public/assets', 'public/img', 'assets'].filter((d) => fs.existsSync(path.join(ROOT, d))).join(', '));
+  ok('src/assets.js is gone', !fs.existsSync(path.join(ROOT, 'src/assets.js')));
+  const pngs = srcFiles.length && (() => {
+    const list = [];
+    const walk2 = (dir) => { for (const e of fs.readdirSync(dir, { withFileTypes: true })) { const f = path.join(dir, e.name); if (e.isDirectory()) walk2(f); else if (/\.(png|jpg|jpeg|webp|gif)$/i.test(e.name)) list.push(f); } };
+    walk2(path.join(ROOT, 'src'));
+    return list;
+  })();
+  ok('zero images in src (only self-hosted woff2 fonts)', pngs.length === 0, pngs.map(p => path.relative(ROOT, p)).join(', '));
+  ok('table surfaces = 5, noir is default + owned',
+    C.MATS.length === 5 && C.MATS[0].id === 'noir'
+    && DBS.initialState().matBg === 'noir' && DBS.initialState().matsOwned.noir === true
+    && DBS.initialState().matsOwned.oxblood === true, C.MATS.map(m => m.id).join('/'));
+  ok('skins are owned/locked from config (gold free)',
+    DBS.initialState().skin === 'gold' && DBS.initialState().skins.gold === true && DBS.initialState().skins.platinum === false);
+  ok('v1 saves with bitmap mats migrate to the new ids',
+    DBS.migrate({ matBg: 'wood', skins: { gold: true, carbon: true }, matsOwned: { wood: true, metal: true }, skin: 'carbon' }).matBg === 'noir'
+    && DBS.migrate({ skins: { carbon: true } }).skins.platinum === true
+    && DBS.migrate({ skins: { carbon: true } }).skins.carbon === undefined);
+  ok('a save whose ticket id does not exist is dropped, not crashed on',
+    DBS.migrate({ tray: [{ id: 'x', ticket: 'ghost-ticket' }, { id: 'y', ticket: 'twowin' }] }).tray.length === 1);
 
   console.log('\n[2] rules / math');
   const L = await import(path.join(ROOT, 'src/game/logic.js'));
@@ -76,17 +100,32 @@ module.exports.run = async function run() {
     const ratio = ev / t.price;
     if (t.id !== 'final' && !(ratio > -1 && ratio < 0.05)) ok(`model EV sane for ${t.id}`, false, `ratio=${ratio.toFixed(2)}`);
   }
-  // engine-accurate EV: 4000 real rolls per ticket, checked against the shared design target
+  // Engine-accurate EV against the shared design target. Sampling is the honest
+  // test (it runs the real roll + payout path), but a rare 24× symbol has enough
+  // variance to make a plain Math.random run flaky — so the whole block is drawn
+  // from a fixed PRNG: reproducible number, no coin-flip gate.
   const EV = await import(path.join(ROOT, 'src/game/config.js'));
+  const realRandom = Math.random;
+  const mulberry = (seed) => () => {
+    seed = (seed + 0x6d2b79f5) | 0;
+    let z = seed;
+    z = Math.imul(z ^ (z >>> 15), 1 | z);
+    z = (z + Math.imul(z ^ (z >>> 7), 61 | z)) ^ z;
+    return ((z ^ (z >>> 14)) >>> 0) / 4294967296;
+  };
   let evBad = [];
+  const evSeen = {};
+  Math.random = mulberry(0xc0ffee);
   for (const t of TICKETS) {
     if (!EV.EV_TARGET[t.id]) continue;
-    let tot = 0; const n = 15000;
+    let tot = 0; const n = 20000;
     for (let i = 0; i < n; i++) tot += L.payoutFor(s0, t, L.rollTicket(s0, t)).pay;
     const r = tot / n / t.price;
+    evSeen[t.id] = +r.toFixed(3);
     if (Math.abs(r - EV.EV_TARGET[t.id]) > 0.12) evBad.push(`${t.id}=${r.toFixed(2)}≠${EV.EV_TARGET[t.id]}`);
   }
-  ok('every ticket: simulated EV within ±12% of its design target', evBad.length === 0, evBad.join(' '));
+  Math.random = realRandom;
+  ok('every ticket: sampled EV within ±12% of its design target (fixed seed)', evBad.length === 0, `${evBad.join(' ')}  [${JSON.stringify(evSeen)}]`);
   ok('a fresh player can buy the entry ticket', (() => {
     const fresh = initialState();
     return C.unlockGate(C.TICKET_BY_ID.twowin) <= 40 && L.isUnlocked({ ...fresh, lifetime: { earn: 40 } }, C.TICKET_BY_ID.twowin) === true;
@@ -269,8 +308,9 @@ module.exports.run = async function run() {
   st.tokens = 10; st.balance = 1e6;
   st = reducer(st, { type: 'SKIN', id: 'rose' });
   ok('SKIN unlock spends tokens', st.skins.rose === true && st.tokens < 10 && st.skin === 'rose');
-  st = reducer(st, { type: 'MAT', id: 'gems' });
-  ok('MAT unlock spends tokens', st.matsOwned.gems === true);
+  st = reducer(st, { type: 'MAT', id: 'emerald' });
+  ok('MAT unlock spends tokens', st.matsOwned.emerald === true && st.matBg === 'emerald' && st.tokens < 10);
+  ok('free themes cost nothing', (() => { const t0 = st.tokens; const n = reducer(st, { type: 'MAT', id: 'noir' }); return n.matBg === 'noir' && n.tokens === t0; })());
   // prestige
   st.run.earn = 5e9; st.lifetime.earn = 5e9; st.balance = 4e9;
   const gain = L.jpEarnable(st);
@@ -313,7 +353,7 @@ module.exports.run = async function run() {
   await sleep(900);
   const txt = () => root.textContent || '';
   ok('app rendered', txt().length > 40, txt().slice(0, 60));
-  ok('shows the scratch table empty state or a ticket', /No ticket on the table|SCRATCH HERE|Buy/i.test(root.innerHTML), root.innerHTML.slice(0, 80));
+  ok('shows the scratch table empty state or a ticket', /No ticket on the table|scratch to reveal|Buy/i.test(root.innerHTML), root.innerHTML.slice(0, 80));
   ok('top bar shows balance', /\d/.test(txt()));
   const buttons = () => Array.from(root.querySelectorAll('button'));
   const click = (b) => { if (!b) return false; b.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true, view: window })); return true; };
@@ -327,8 +367,15 @@ module.exports.run = async function run() {
     b.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
     return true;
   };
-  clickRe(/daily gift/); await sleep(200);          // open the stash sheet
-  { const b = Array.from(root.querySelectorAll('.sheet .btn')).find((x) => /Claim stash/.test(x.textContent)); click(b); }
+
+  // a cold save is gated by onboarding — take the real first step, including its CTA
+  ok('cold save is gated by onboarding with no way to dismiss it by accident', /Start with/.test(txt()) && !root.querySelector('.modal .xbtn'), txt().slice(0, 80));
+  ok('onboarding CTA starts the run', clickText(/Start with/));
+  await sleep(400);
+  ok('onboarding closes itself (no stuck scrim)', !root.querySelector('.modal'), root.querySelector('.modal')?.className || 'gone');
+  clickRe(/daily stash/i); await sleep(200);          // open the stash sheet
+  { const b = Array.from(root.querySelectorAll('.modal__foot .btn')).find((x) => /Claim stash/.test(x.textContent)); click(b); }
+  ok('gift sheet exposes a working close button', !!root.querySelector('.scrim .xbtn[aria-label="Close"]'));
   await sleep(250);                                 // fresh player can now afford Two Win
   await sleep(150);
   ok('tab: open Shop', clickText(/^\s*Shop/));
@@ -349,7 +396,12 @@ module.exports.run = async function run() {
   ok('prestige screen shows tree', /Prestige for|Earn .* more to prestige/.test(txt()), txt().slice(0, 120));
   ok('tab: You', clickText(/^\s*You/));
   await sleep(300);
-  ok('profile shows stats + save code', /SV1\./.test(root.querySelector('textarea')?.value || ''), 'no save code');
+  ok('save sheet opens from the profile', clickText(/export \/ import/));
+  await sleep(200);
+  ok('save sheet renders the code in a modal with a working close', /SV1\./.test(root.querySelector('.modal textarea')?.value || '') && !!root.querySelector('.modal .xbtn'), 'no save code');
+  ok('save sheet Esc closes it', (() => { const before = !!root.querySelector('.modal'); root.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); window.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); return before; })());
+  await sleep(220);
+  ok('save sheet is gone after Esc', !root.querySelector('.modal'), root.querySelector('.modal')?.className || 'closed');
   ok('achievements render', txt().includes('First Blood'));
   ok('settings toggles present', /Haptics/.test(txt()));
   ok('tab: Table', clickText(/^\s*Table/));
@@ -376,7 +428,7 @@ module.exports.run = async function run() {
       return m ? +m[1] : 0;
     };
     fire('pointerdown', 55, 75); await sleep(120); fire('pointerup', 55, 75); await sleep(200);
-    console.log('   [dbg] after one dab → hint hidden?', !/SCRATCH HERE/.test(root.textContent || ''), 'prog:', (root.querySelector('.prog')?.textContent || 'none').trim());
+    console.log('   [dbg] after one dab → hint hidden?', !/scratch to reveal/.test(root.textContent || ''), 'prog:', (root.querySelector('.prog')?.textContent || 'none').trim());
     fire('pointerdown', 55, 75);
     const p0 = prog();
     const swipe = async (sx, sy, ex, ey) => {
@@ -389,7 +441,7 @@ module.exports.run = async function run() {
       await sleep(60);
     };
     // one swipe per row of the 3×3 grid, then repeat passes until the card resolves
-    let maxProg = p0, sawOpenCells = 0, resolved = false, lvlBefore = (root.querySelector('.lvlwrap')?.textContent || '').trim();
+    let maxProg = p0, sawOpenCells = 0, resolved = false, lvlBefore = (root.querySelector('.progress-row')?.textContent || '').trim();
     for (let pass = 0; pass < 8; pass++) {
       for (let row = 0; row < 3; row++) await swipe(55, 75 + row * 125, 255, 75 + row * 125);
       maxProg = Math.max(maxProg, prog());
@@ -397,8 +449,8 @@ module.exports.run = async function run() {
       const hint = (root.querySelector('.sect .hint')?.textContent || '').trim();
       if (hint !== 'scratch the foil') { resolved = true; break; }
     }
-    const balTxt = (root.querySelector('.pill.gold .v')?.textContent || '').trim();
-    const lvlAfter = (root.querySelector('.lvlwrap')?.textContent || '').trim();
+    const balTxt = (root.querySelector('.pill--gold .tabular')?.textContent || '').trim();
+    const lvlAfter = (root.querySelector('.progress-row')?.textContent || '').trim();
     await sleep(300);
     ok('finger strokes reveal coverage', maxProg > p0, `${p0}% → ${maxProg}%`);
     ok('scratch drives the store (foil cells open up)', sawOpenCells > 0, `${sawOpenCells} open cells`);
@@ -461,7 +513,7 @@ module.exports.run = async function run() {
       if (opened.length && !opened.every((k) => k === i)) geoBad.push(`${i}: brush also opened ${opened}`);
     }
     ok('every cell centre maps inside its own grid box + brush opens only that cell', geoBad.length === 0, geoBad.join(' | '));
-    ok('canvas aspect + grid fractions match the CSS (.tgrid 7%/25%/15%)', GW === 0.86 && GH === 0.60);
+    ok('canvas aspect + grid fractions match the CSS (--gx/--gy/--gw/--gh)', GW === 0.86 && GH === 0.60);
   }
 
   console.log(`\n${fails === 0 ? '✅' : '❌'} ${passes} passed, ${fails} failed\n`);
