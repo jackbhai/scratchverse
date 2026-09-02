@@ -17,7 +17,8 @@
     "tune": "node scripts/tune.mjs",
     "shots": "bash scripts/ensure-browser-libs.sh && node scripts/shots.mjs",
     "verify": "npm run typecheck && npm run lint && npm test && npm run tune -- --check && npm run build",
-    "contact": "python3 scripts/contact-sheet.py"
+    "contact": "python3 scripts/contact-sheet.py",
+    "icons": "python3 scripts/build-icons.py"
   },
   "dependencies": {
     "dexie": "^4.0.8",

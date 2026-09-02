@@ -63,6 +63,27 @@ module.exports.run = async function run() {
   ok('icon registry is non-trivial', iconNames().length >= 60, String(iconNames().length));
   ok('no raster asset directories remain', ['public/art', 'public/assets', 'public/img', 'assets'].every((d) => !fs.existsSync(path.join(ROOT, d))),
     ['public/art', 'public/assets', 'public/img', 'assets'].filter((d) => fs.existsSync(path.join(ROOT, d))).join(', '));
+  // Nothing photographic anywhere: the only rasters allowed in the tree are the three
+  // install icons, and those are painted by scripts/build-icons.py from the crest recipe.
+  const GENERATED = new Set(['public/icons/icon-192.png', 'public/icons/icon-512.png', 'public/icons/maskable-512.png']);
+  const SKIP = new Set(['node_modules', 'dist', 'dist-test', 'shots', '.git', '.browser-libs', 'coverage', '.vite']);
+  const rasters = [];
+  const walkRasters = dir => {
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (SKIP.has(e.name)) continue;
+      const p = path.join(dir, e.name);
+      if (e.isDirectory()) walkRasters(p);
+      else if (/\.(png|jpe?g|webp|gif|bmp|tiff)$/i.test(e.name)) rasters.push(path.relative(ROOT, p).split(path.sep).join('/'));
+    }
+  };
+  walkRasters(ROOT);
+  const foreign = rasters.filter(f => !GENERATED.has(f));
+  ok('zero bitmap art in the tree — only the generated install icons remain',
+    foreign.length === 0 && GENERATED.size === 3, `foreign: ${foreign.join(', ') || 'none'}`);
+  ok('the install icons are the square ones npm run icons writes', ['public/icons/icon-192.png', 'public/icons/icon-512.png', 'public/icons/maskable-512.png'].every(f => {
+    const b = fs.readFileSync(path.join(ROOT, f));
+    return b.slice(1, 4).toString() === 'PNG' && b.length > 2000 && b.length < 200000;
+  }), rasters.map(f => `${f}:${fs.statSync(path.join(ROOT, f)).size}`).join(' '));
   ok('src/assets.js is gone', !fs.existsSync(path.join(ROOT, 'src/assets.js')));
   const pngs = srcFiles.length && (() => {
     const list = [];
