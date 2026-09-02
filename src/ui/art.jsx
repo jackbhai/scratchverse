@@ -70,35 +70,6 @@ export const SKIN_METAL = {
   platinum: { hi: '#ffffff', mid: '#d5dae4', low: '#6c7688', deep: '#1b202a' },
 };
 
-/**
- * The foil as a standalone SVG document, used two ways:
- *  - as a CSS `background-image` data URI for chips/swatches
- *  - as a canvas `createPattern` source, so the scratchable panel is real metal
- */
-export function foilSvg(skin = 'gold', size = 240) {
-  const m = SKIN_METAL[skin] || SKIN_METAL.gold;
-  const lines = Array.from({ length: 34 }, (_, i) => i * (size / 34))
-    .map(
-      y =>
-        `<path d="M0 ${y.toFixed(1)} L${size} ${(y + size * 0.045).toFixed(1)}" stroke="#000" stroke-opacity=".10" stroke-width=".7"/>`
-    )
-    .join('');
-  const svg =
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">` +
-    `<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">` +
-    `<stop offset="0" stop-color="${m.hi}"/><stop offset=".18" stop-color="${m.mid}"/>` +
-    `<stop offset=".34" stop-color="${m.deep}"/><stop offset=".5" stop-color="${m.mid}"/>` +
-    `<stop offset=".66" stop-color="${m.hi}"/><stop offset=".82" stop-color="${m.low}"/>` +
-    `<stop offset="1" stop-color="${m.mid}"/></linearGradient>` +
-    `<radialGradient id="r" cx=".5" cy=".35" r=".8"><stop offset="0" stop-color="#fff" stop-opacity=".22"/><stop offset="1" stop-color="#000" stop-opacity=".30"/></radialGradient>` +
-    `</defs>` +
-    `<rect width="${size}" height="${size}" fill="url(#g)"/>` +
-    `<g opacity=".55">${lines}</g>` +
-    `<rect width="${size}" height="${size}" fill="url(#r)"/>` +
-    `</svg>`;
-  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
-}
-
 /** Same metal, expressed as pure CSS layers (used for chips, swatches, the coin cursor). */
 export function metalCss(skin = 'gold') {
   const m = SKIN_METAL[skin] || SKIN_METAL.gold;
@@ -109,6 +80,93 @@ export function metalCss(skin = 'gold') {
 }
 
 /* ---------- table themes: AMOLED-safe, no photographs ---------- */
+/**
+ * The seal on a ticket is paper, not metal — but the equipped coating still decides
+ * the stock tint and the letterpress ink, so cosmetics keep showing on the card.
+ * Everything below is generated: a swatch is a torn SVG polygon, the CSS sample is a
+ * stack of gradients. No bitmap anywhere.
+ */
+export const PAPER = {
+  gold: { stock: '#f1ead9', shade: '#d5c9ad', ink: '#8a6a24', fibre: '#b9a983' },
+  rose: { stock: '#f6e7e4', shade: '#dcc2be', ink: '#9d5b60', fibre: '#c69a97' },
+  neon: { stock: '#e7f1ef', shade: '#c1d5d3', ink: '#1d7d72', fibre: '#8fb3b0' },
+  platinum: { stock: '#f3f4f6', shade: '#d3d7dd', ink: '#6b7280', fibre: '#a7aeb8' },
+};
+export const PAPER_OF = skin => PAPER[skin] || PAPER.gold;
+
+const rgba = (hex, al) => {
+  const h = String(hex).replace('#', '');
+  const n =
+    h.length === 3
+      ? h
+          .split('')
+          .map(ch => ch + ch)
+          .join('')
+      : h;
+  const v = parseInt(n.slice(0, 6), 16);
+  return 'rgba(' + ((v >> 16) & 255) + ', ' + ((v >> 8) & 255) + ', ' + (v & 255) + ', ' + al + ')';
+};
+
+/** The stock a coating buys you, as a CSS background (used for chips and swatches). */
+export function paperCss(skin = 'gold') {
+  const q = PAPER[skin] || PAPER.gold;
+  return [
+    'repeating-linear-gradient(0deg, ' + rgba(q.fibre, 0.18) + ' 0 1px, transparent 1px 3px)',
+    'radial-gradient(120% 90% at 22% 10%, rgba(255,255,255,.6) 0%, rgba(255,255,255,0) 48%)',
+    'linear-gradient(155deg, #ffffff 0%, ' + q.stock + ' 26%, ' + q.stock + ' 66%, ' + q.shade + ' 100%)',
+  ].join(', ');
+}
+
+/** A torn scrap of the seal, drawn as SVG — what the Night Market shows you before you buy. */
+export function PaperSwatch({ skin = 'gold', w = 92, h = 46, label = null }) {
+  const q = PAPER[skin] || PAPER.gold;
+  const rnd = rng('swatch:' + skin);
+  const pts = [];
+  for (let k = 0; k < 40; k++) {
+    const t = k / 40;
+    let x, y;
+    if (t < 0.25) {
+      x = (t / 0.25) * w;
+      y = 0;
+    } else if (t < 0.5) {
+      x = w;
+      y = ((t - 0.25) / 0.25) * h;
+    } else if (t < 0.75) {
+      x = w - ((t - 0.5) / 0.25) * w;
+      y = h;
+    } else {
+      x = 0;
+      y = h - ((t - 0.75) / 0.25) * h;
+    }
+    const len = Math.hypot(x - w / 2, y - h / 2) || 1;
+    const n = (rnd() - 0.5) * 3.2;
+    x = x + ((x - w / 2) / len) * n;
+    y = y + ((y - h / 2) / len) * n;
+    pts.push(x.toFixed(1) + ' ' + y.toFixed(1));
+  }
+  const poly = pts.join(' ');
+  const vb = '-3 -3 ' + (w + 6) + ' ' + (h + 6);
+  return (
+    <svg viewBox={vb} width="100%" height={h} role="img" aria-label={skin + ' paper stock'} style={{ display: 'block' }}>
+      <polygon points={poly} fill="rgba(0,0,0,.55)" transform="translate(0 2)" />
+      <polygon points={poly} fill={q.stock} />
+      <polygon points={poly} fill="none" stroke="rgba(255,255,255,.62)" strokeWidth=".8" />
+      <text
+        x={w / 2}
+        y={h / 2 + 3}
+        textAnchor="middle"
+        fontFamily="var(--font-d, sans-serif)"
+        fontSize="9"
+        fontWeight="800"
+        letterSpacing="1.4"
+        fill={q.ink}
+        opacity=".6">
+        {(label || skin).toUpperCase()}
+      </text>
+    </svg>
+  );
+}
+
 export const MATS_CSS = {
   noir: 'radial-gradient(120% 80% at 50% -10%, #14161b 0%, #05050a 55%, #000 100%)',
   graphite:

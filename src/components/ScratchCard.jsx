@@ -1,15 +1,16 @@
 // ============================================================
 // ScratchCard — the heart of the game.
-// Coating is painted procedurally on a canvas from the equipped metal
-// (SKIN_METAL → CSS/SVG gradients only: there is no bitmap in this app),
-// coverage drives the reveal, matched cells get a drawn pay-line,
-// shavings are real DOM flakes animated with WAAPI.
+// The nine symbols are covered by a *paper seal* painted on a canvas: laid stock,
+// fibres, letterpress stamp, deckled edges. One touch tears a whole cell off — ragged
+// hole, bright fibre edge, cast shadow and a couple of slivers still hanging on.
+// Everything (paper, holes, ticket face, glyphs) is drawn from data: zero bitmaps.
 // ============================================================
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { rng } from '../ui/art.jsx';
 import { motion } from 'motion/react';
 import { TICKET_BY_ID } from '../game/config.js';
-import { applyDab, revealCells, cellThreshold } from '../game/logic.js';
-import { Bar, Coin, Icon, SKIN_METAL, TicketFace, cx } from '../ui/base.jsx';
+import { cellsForStroke, cellThreshold, revealCells, tearCells } from '../game/logic.js';
+import { Bar, Coin, Icon, PAPER_OF, TicketFace, cx } from '../ui/base.jsx';
 import SFX from '../game/sound.js';
 
 // symbol grid inside the card — must match .tcard { --gx/--gy/--gw/--gh }
@@ -20,7 +21,6 @@ const GW = 0.86,
 const N = 9;
 
 const cellCenter = i => [(i % 3) / 3 + 1 / 6, Math.floor(i / 3) / 3 + 1 / 6];
-const normOf = i => [(i % 3) / 2, Math.floor(i / 3) / 2];
 const fmtPay = p => (p >= 1 ? `${p % 1 ? p.toFixed(2) : p}×` : `${Math.round(p * 100)}%`);
 
 /**
@@ -42,7 +42,7 @@ export default function ScratchCard({
     holder = useRef(null),
     gloss = useRef(null),
     flakes = useRef(null);
-  const draw = useRef({ ctx: null, w: 0, h: 0, dpr: 1, img: null, sc: null, done: false, metal: 'gold' });
+  const draw = useRef({ ctx: null, w: 0, h: 0, dpr: 1, sc: null, done: false });
   const ptr = useRef({ on: false, x: 0, y: 0, t: 0, v: 0, px: null, py: null });
   const synced = useRef(0),
     pending = useRef(null),
@@ -54,19 +54,147 @@ export default function ScratchCard({
   const [lift, setLift] = useState(false);
   const [cleared, setCleared] = useState(false);
 
-  const metal = SKIN_METAL[skin] || SKIN_METAL.gold;
+  const paper = PAPER_OF(skin);
   const strength = st?.strength ?? 10;
   const th = def ? cellThreshold(def, strength) : 0.4;
 
-  /* ---------------- foil painting (procedural metal panel, no image assets) ----------------
-     Only the play panel is coated: the frame, top rail, motif and name plate stay visible like a
-     printed card. Everything is painted in one pass, so there are no bitmap tile seams. */
-  const panelRect = (D, pad = 0.012) => ({
-    x: (GX0 - pad) * D.w,
-    y: (GY0 - pad) * D.h,
-    w: GW * D.w + pad * 2 * D.w,
-    h: GH * D.h + pad * 2 * D.h,
+  /* ---------------- the paper seal (painted from data — no bitmap anywhere) ----------------
+     A slip of laid stock glued over the nine cells. One touch tears a whole cell off: ragged
+     hole, bright fibre edge, the shadow the lifted paper casts on the print, and a couple of
+     slivers still hanging. Deterministic per cell, so a resize repaints the same tears. */
+  const EDGE = 0.016;
+  const panelRect = D => ({
+    x: (GX0 - EDGE) * D.w,
+    y: (GY0 - EDGE) * D.h,
+    w: GW * D.w + 2 * EDGE * D.w,
+    h: GH * D.h + 2 * EDGE * D.h,
   });
+  // the cell a touch opens, as a box on the canvas — centred on the symbol, so the
+  // torn window always frames the print instead of clipping it
+  const cellBox = (D, i, inset = 0.035) => {
+    const cw = (GW / 3) * D.w * (1 - inset * 2),
+      ch = (GH / 3) * D.h * (1 - inset * 2);
+    const [fx, fy] = cellCenter(i);
+    return { x: (GX0 + fx * GW) * D.w - cw / 2, y: (GY0 + fy * GH) * D.h - ch / 2, w: cw, h: ch };
+  };
+
+  /** a closed path around a box whose edge has been torn, not cut */
+  const tearPath = (g, box, seed, amp, points = 46) => {
+    const rnd = rng(seed);
+    const { x, y, w, h } = box;
+    const cx = x + w / 2,
+      cy = y + h / 2;
+    g.beginPath();
+    for (let k = 0; k < points; k++) {
+      const t = k / points;
+      let px, py;
+      if (t < 0.25) {
+        px = x + (t / 0.25) * w;
+        py = y;
+      } else if (t < 0.5) {
+        px = x + w;
+        py = y + ((t - 0.25) / 0.25) * h;
+      } else if (t < 0.75) {
+        px = x + w - ((t - 0.5) / 0.25) * w;
+        py = y + h;
+      } else {
+        px = x;
+        py = y + h - ((t - 0.75) / 0.25) * h;
+      }
+      const dx = px - cx,
+        dy = py - cy;
+      const len = Math.hypot(dx, dy) || 1;
+      const n = (rnd() - 0.5) * 2 * amp;
+      const X = px + (dx / len) * n,
+        Y = py + (dy / len) * n;
+      if (k) g.lineTo(X, Y);
+      else g.moveTo(X, Y);
+    }
+    g.closePath();
+  };
+
+  /** rip one cell's paper off: the hole, the fibre edge, its shadow and two hanging slivers */
+  const punch = (g, D, i) => {
+    const box = cellBox(D, i);
+    const amp = Math.max(1.8, Math.min(box.w, box.h) * 0.062); // fibres tear ragged, not straight
+    const seed = `${def?.id || 'seal'}#${i}`;
+    const dpr = D.dpr;
+    g.save();
+    // 1. shadow first, so the erase clips it to the paper side of the edge
+    g.globalAlpha = 0.4;
+    g.strokeStyle = 'rgba(0,0,0,0.9)';
+    g.lineWidth = Math.max(2, dpr * 2.4);
+    g.save();
+    g.translate(dpr * 0.8, dpr * 2.2);
+    tearPath(g, box, seed, amp);
+    g.stroke();
+    g.restore();
+    // 2. the hole
+    g.globalAlpha = 1;
+    g.globalCompositeOperation = 'destination-out';
+    tearPath(g, box, seed, amp);
+    g.fillStyle = '#000';
+    g.fill();
+    // 3. torn fibres catch the light
+    g.globalCompositeOperation = 'source-over';
+    g.globalAlpha = 0.9;
+    g.strokeStyle = '#fff';
+    g.lineWidth = Math.max(0.7, dpr * 0.9);
+    tearPath(g, box, seed, amp);
+    g.stroke();
+    // 4. two or three slivers still attached at the edge
+    const rnd = rng(`${seed}-lip`);
+    g.fillStyle = paper.stock;
+    for (let k = 0; k < 3; k++) {
+      const side = Math.floor(rnd() * 4);
+      const f = 0.18 + rnd() * 0.64;
+      const s = box.w * (0.06 + rnd() * 0.1);
+      let ax, ay, bx, by, ox, oy;
+      if (side === 0) {
+        ax = box.x + f * box.w;
+        ay = box.y;
+        bx = ax + s;
+        by = ay;
+        ox = 0;
+        oy = s * (0.7 + rnd());
+      } else if (side === 1) {
+        ax = box.x + box.w;
+        ay = box.y + f * box.h;
+        bx = ax;
+        by = ay + s;
+        ox = -s * (0.7 + rnd());
+        oy = 0;
+      } else if (side === 2) {
+        ax = box.x + f * box.w;
+        ay = box.y + box.h;
+        bx = ax + s;
+        by = ay;
+        ox = 0;
+        oy = -s * (0.7 + rnd());
+      } else {
+        ax = box.x;
+        ay = box.y + f * box.h;
+        bx = ax;
+        by = ay + s;
+        ox = s * (0.7 + rnd());
+        oy = 0;
+      }
+      g.globalAlpha = 0.92;
+      g.beginPath();
+      g.moveTo(ax, ay);
+      g.lineTo(bx, by);
+      g.lineTo((ax + bx) / 2 + ox, (ay + by) / 2 + oy);
+      g.closePath();
+      g.fill();
+      g.globalAlpha = 0.5;
+      g.strokeStyle = paper.shade;
+      g.lineWidth = Math.max(0.5, dpr * 0.7);
+      g.stroke();
+    }
+    g.restore();
+    g.globalAlpha = 1;
+    g.globalCompositeOperation = 'source-over';
+  };
 
   const paintBase = useCallback(() => {
     const c = cv.current,
@@ -78,108 +206,138 @@ export default function ScratchCard({
     g.globalAlpha = 1;
     g.clearRect(0, 0, D.w, D.h);
     const P = panelRect(D);
+    const amp = Math.max(1.6, D.dpr * 1.9); // the deckled edge of the sheet
+
+    // the seal lies ON the card: give it a shadow and a deckled silhouette
+    g.save();
+    g.shadowColor = 'rgba(0,0,0,0.55)';
+    g.shadowBlur = D.dpr * 7;
+    g.shadowOffsetY = D.dpr * 2.5;
+    g.fillStyle = paper.stock;
+    tearPath(g, P, `${def?.id || 'seal'}-edge`, amp, 68);
+    g.fill();
+    g.restore();
 
     g.save();
-    roundRect(g, P.x, P.y, P.w, P.h, Math.min(P.w, P.h) * 0.09);
+    tearPath(g, P, `${def?.id || 'seal'}-edge`, amp, 68);
     g.clip();
 
-    // 1. the metal: one wide gradient, so nothing repeats
-    const lg = g.createLinearGradient(P.x, P.y, P.x + P.w, P.y + P.h);
-    lg.addColorStop(0, metal.hi);
-    lg.addColorStop(0.22, metal.mid);
-    lg.addColorStop(0.46, metal.low);
-    lg.addColorStop(0.6, metal.mid);
-    lg.addColorStop(0.78, metal.hi);
-    lg.addColorStop(1, metal.mid);
+    // 1. the stock: a soft warm-to-cool ramp, never a mirror
+    const lg = g.createLinearGradient(P.x, P.y, P.x + P.w * 0.35, P.y + P.h);
+    lg.addColorStop(0, '#ffffff');
+    lg.addColorStop(0.14, paper.stock);
+    lg.addColorStop(0.72, paper.stock);
+    lg.addColorStop(1, paper.shade);
     g.fillStyle = lg;
     g.fillRect(P.x, P.y, P.w, P.h);
 
-    // 2. brushed hairlines — the security texture of a real coating
+    // 2. laid + chain lines, the watermark grid of real paper
     g.save();
+    g.strokeStyle = paper.fibre;
     g.globalAlpha = 0.1;
-    g.strokeStyle = '#000';
-    g.lineWidth = Math.max(0.5, D.dpr * 0.55);
-    const step = Math.max(3.2, D.h / 120);
-    for (let y = P.y - P.w; y < P.y + P.h + P.w; y += step) {
+    g.lineWidth = Math.max(0.4, D.dpr * 0.5);
+    const lay = Math.max(2.6, D.h / 170);
+    for (let y = P.y; y < P.y + P.h; y += lay) {
       g.beginPath();
       g.moveTo(P.x, y);
-      g.lineTo(P.x + P.w, y + P.w * 0.06);
+      g.lineTo(P.x + P.w, y);
+      g.stroke();
+    }
+    g.globalAlpha = 0.08;
+    for (let x = P.x; x < P.x + P.w; x += lay * 9) {
+      g.beginPath();
+      g.moveTo(x, P.y);
+      g.lineTo(x, P.y + P.h);
       g.stroke();
     }
     g.restore();
 
-    // 3. catalogue tint, so each ticket's coating reads a little differently
-    if (def?.tint) {
+    // 3. fibres and specks — the fuzz you can feel
+    const rnd = rng(`${def?.id || 'seal'}-fibre`);
+    for (let k = 0; k < 420; k++) {
+      const x = P.x + rnd() * P.w,
+        y = P.y + rnd() * P.h;
+      const light = rnd() > 0.45;
+      g.globalAlpha = 0.03 + rnd() * 0.07;
+      g.fillStyle = light ? '#fff' : paper.fibre;
+      const s = 0.5 + rnd() * (D.dpr * 1.5);
       g.save();
-      g.globalCompositeOperation = 'overlay';
-      g.globalAlpha = 0.22;
-      g.fillStyle = def.tint;
-      g.fillRect(P.x, P.y, P.w, P.h);
+      g.translate(x, y);
+      g.rotate(rnd() * 3.14);
+      g.fillRect(-s, -s * 0.28, s * 2, s * 0.56);
+      g.restore();
+    }
+    g.globalAlpha = 1;
+
+    // 4. the sheet curls a little under the light
+    const curl = g.createRadialGradient(P.x + P.w * 0.28, P.y + P.h * 0.2, P.w * 0.06, P.x + P.w * 0.5, P.y + P.h * 0.55, P.w);
+    curl.addColorStop(0, 'rgba(255,255,255,0.5)');
+    curl.addColorStop(0.5, 'rgba(255,255,255,0.0)');
+    curl.addColorStop(1, 'rgba(60,48,28,0.16)');
+    g.fillStyle = curl;
+    g.fillRect(P.x, P.y, P.w, P.h);
+
+    // 5. letterpress stamp — debossed ink, so it belongs to the paper and tears with it
+    g.save();
+    g.textAlign = 'center';
+    const cy0 = P.y + P.h * 0.5;
+    const fs = Math.max(9, P.w * 0.082);
+    g.font = `800 ${fs}px "Sora", "Manrope", system-ui, sans-serif`;
+    g.fillStyle = 'rgba(255,255,255,0.7)';
+    g.fillText((def?.name || 'SEALED').toUpperCase(), P.x + P.w / 2 + 0.7, cy0 + 0.8);
+    g.fillStyle = paper.ink;
+    g.globalAlpha = 0.3;
+    g.fillText((def?.name || 'SEALED').toUpperCase(), P.x + P.w / 2, cy0);
+    g.globalAlpha = 0.22;
+    g.font = `700 ${Math.max(5.5, fs * 0.3)}px "Manrope", system-ui, sans-serif`;
+    const stamp = `${(def?.catName || 'SEALED').toUpperCase()} · NO. ${1000 + (def?.cat || 0) * 11 + ((def?.price || 0) % 900)} · ONE TOUCH TEARS`;
+    g.fillText(stamp, P.x + P.w / 2, cy0 + fs * 0.92);
+    g.strokeStyle = paper.ink;
+    g.lineWidth = Math.max(0.6, D.dpr * 0.8);
+    g.beginPath();
+    g.moveTo(P.x + P.w * 0.2, cy0 - fs * 1.05);
+    g.lineTo(P.x + P.w * 0.8, cy0 - fs * 1.05);
+    g.moveTo(P.x + P.w * 0.2, cy0 + fs * 1.3);
+    g.lineTo(P.x + P.w * 0.8, cy0 + fs * 1.3);
+    g.stroke();
+    g.restore();
+
+    // 6. the print bumps through the paper: nine soft dimples
+    for (let i = 0; i < N; i++) {
+      const b = cellBox(D, i);
+      g.save();
+      g.globalAlpha = 0.07;
+      g.fillStyle = paper.shade;
+      roundRect(g, b.x + 2, b.y + 2, b.w - 4, b.h - 4, Math.min(b.w, b.h) * 0.13);
+      g.fill();
+      g.globalAlpha = 0.5;
+      g.strokeStyle = 'rgba(255,255,255,0.55)';
+      g.lineWidth = Math.max(0.5, D.dpr * 0.7);
+      roundRect(g, b.x + 2, b.y + 1.4, b.w - 4, b.h - 4, Math.min(b.w, b.h) * 0.13);
+      g.stroke();
       g.restore();
     }
 
-    // 4. one smooth specular sweep from the top-left light
-    const sp = g.createRadialGradient(P.x + P.w * 0.3, P.y + P.h * 0.16, P.w * 0.05, P.x + P.w * 0.5, P.y + P.h * 0.5, P.w * 0.95);
-    sp.addColorStop(0, 'rgba(255,255,255,0.30)');
-    sp.addColorStop(0.42, 'rgba(255,255,255,0.05)');
-    sp.addColorStop(1, 'rgba(0,0,0,0.30)');
-    g.fillStyle = sp;
-    g.fillRect(P.x, P.y, P.w, P.h);
-
-    // 5. microprint, two whisper-quiet lines like real card printing
+    // 7. glue shadow all round the seal
     g.save();
-    g.globalAlpha = 0.1;
-    g.fillStyle = '#000';
-    g.font = `700 ${Math.max(5.5, D.dpr * 4.6)}px "Manrope", system-ui, sans-serif`;
-    const word = `${(def?.name || 'SCRATCH').toUpperCase()} · SECURE · `;
-    for (let i = 0; i < 2; i++) g.fillText(word.repeat(10), P.x + 2, P.y + P.h * (0.035 + i * 0.012));
+    g.globalAlpha = 0.16;
+    g.strokeStyle = '#2a2118';
+    g.lineWidth = Math.max(2, D.dpr * 4);
+    tearPath(g, P, `${def?.id || 'seal'}-edge`, amp, 68);
+    g.stroke();
     g.restore();
 
-    // 6. the nine cell wells under the foil — you can read the layout through it
-    for (let i = 0; i < N; i++) {
-      const [fx, fy] = normOf(i);
-      const x = (GX0 + fx * GW) * D.w,
-        y = (GY0 + fy * GH) * D.h;
-      const cw = (GW / 3) * D.w,
-        ch = (GH / 3) * D.h,
-        r = Math.min(cw, ch) * 0.13;
-      g.fillStyle = 'rgba(0,0,0,0.13)';
-      roundRect(g, x - cw / 2 + 2, y - ch / 2 + 2, cw - 4, ch - 4, r);
-      g.fill();
-      g.strokeStyle = 'rgba(255,255,255,0.16)';
-      g.lineWidth = Math.max(0.5, D.dpr * 0.8);
-      roundRect(g, x - cw / 2 + 2.5, y - ch / 2 + 2.5, cw - 5, ch - 5, r);
-      g.stroke();
-    }
-
-    // 7. re-erase whatever the store already considers scratched
+    // 8. whatever the game already considers open gets ripped off
     const sc = D.sc || [];
-    g.globalCompositeOperation = 'destination-out';
     for (let i = 0; i < N; i++) {
-      if (!sc[i] || sc[i] < thr) continue;
-      const [fx, fy] = cellCenter(i);
-      const x = (GX0 + fx * GW) * D.w,
-        y = (GY0 + fy * GH) * D.h;
-      g.beginPath();
-      g.arc(x, y, Math.max(D.w * 0.24, D.h * 0.17), 0, 7);
-      g.fill();
+      if ((sc[i] || 0) >= thr) punch(g, D, i);
     }
     g.restore();
-    g.globalCompositeOperation = 'source-over';
+  }, [def, paper, strength]);
 
-    // 8. the panel rim, drawn outside the clip so it stays crisp
-    g.strokeStyle = 'rgba(0,0,0,0.5)';
-    g.lineWidth = Math.max(0.7, D.dpr);
-    roundRect(g, P.x + 0.5, P.y + 0.5, P.w - 1, P.h - 1, Math.min(P.w, P.h) * 0.09);
-    g.stroke();
-    g.strokeStyle = 'rgba(255,255,255,0.22)';
-    roundRect(g, P.x + 1.6, P.y + 1.6, P.w - 3.2, P.h - 3.2, Math.min(P.w, P.h) * 0.085);
-    g.stroke();
-  }, [def, metal, strength]);
-
-  // the equipped metal decides the paint; re-forecast whenever the skin changes
+  // the equipped coating tints the stock and the ink, so repaint when it changes
+  // the equipped coating tints the stock + ink, so repaint when it changes
   useEffect(() => {
-    draw.current.metal = skin;
     paintBase();
   }, [skin, paintBase]);
 
@@ -223,19 +381,20 @@ export default function ScratchCard({
 
   /* ---------------- shavings ---------------- */
   const puff = (clientX, clientY, n = 1) => {
-    if (reduceFx || !flakes.current || !holder.current) return;
+    if (reduceFx || !flakes.current || !holder.current || typeof Element.prototype.animate !== 'function') return;
     if (live.current > 26) return;
     const box = holder.current.getBoundingClientRect();
     const host = flakes.current;
     for (let k = 0; k < n; k++) {
       const el = document.createElement('i');
       el.className = 'flake';
-      const w = 5 + Math.random() * 9;
+      const w = 6 + Math.random() * 12; // paper tears in chunks, foil in dust
       el.style.width = `${w}px`;
       el.style.height = `${w * 0.62}px`;
       el.style.left = `${clientX - box.left}px`;
       el.style.top = `${clientY - box.top}px`;
-      el.style.background = `linear-gradient(160deg, ${metal.hi}, ${metal.mid} 45%, ${metal.low})`;
+      el.style.background = `linear-gradient(160deg, #fff 0%, ${paper.stock} 48%, ${paper.shade} 100%)`;
+      el.style.boxShadow = 'inset 0 0 0 0.5px rgba(0,0,0,0.10)';
       host.appendChild(el);
       live.current += 1;
       const dx = (Math.random() - 0.5) * 90;
@@ -262,41 +421,6 @@ export default function ScratchCard({
   };
 
   /* ---------------- brush ---------------- */
-  const erase = (nx, ny, r, v = 0.55) => {
-    const D = draw.current;
-    if (!D.ctx || !D.w) return;
-    const g = D.ctx;
-    const x = (GX0 + nx * GW) * D.w,
-      y = (GY0 + ny * GH) * D.h;
-    const radX = D.w * r,
-      radY = (radX * (D.h / D.w)) / (GH / GW);
-    g.save();
-    g.translate(x, y);
-    g.scale(1, radY / radX);
-    g.translate(-x, -y);
-    // torn-foil lip: a bright curl left *behind* the cleared area
-    g.globalCompositeOperation = 'source-over';
-    const lip = g.createRadialGradient(x, y, radX * 0.72, x, y, radX * 1.16);
-    lip.addColorStop(0, 'rgba(0,0,0,0)');
-    lip.addColorStop(0.55, `rgba(255,255,255,${0.1 + v * 0.16})`);
-    lip.addColorStop(1, 'rgba(0,0,0,0.16)');
-    g.fillStyle = lip;
-    g.beginPath();
-    g.arc(x, y, radX * 1.16, 0, 7);
-    g.fill();
-    // the actual clear
-    g.globalCompositeOperation = 'destination-out';
-    const gr = g.createRadialGradient(x, y, radX * 0.42, x, y, radX);
-    gr.addColorStop(0, 'rgba(0,0,0,1)');
-    gr.addColorStop(0.74, 'rgba(0,0,0,0.96)');
-    gr.addColorStop(1, 'rgba(0,0,0,0)');
-    g.fillStyle = gr;
-    g.beginPath();
-    g.arc(x, y, radX, 0, 7);
-    g.fill();
-    g.restore();
-    g.globalCompositeOperation = 'source-over';
-  };
 
   const schedule = res => {
     pending.current = res;
@@ -310,6 +434,7 @@ export default function ScratchCard({
         synced.current = now;
         onScratch?.({ scratch: r.scratch, revealed: r.revealed, coverage: r.coverage, newly: r.newly });
       }
+      console.log('[dbg-sched] complete', r.complete, 'ended', ended.current, 'rev', r.revealed);
       if (r.complete && !ended.current) {
         ended.current = true;
         draw.current.done = true;
@@ -329,10 +454,13 @@ export default function ScratchCard({
     el.style.opacity = '1';
   };
 
+  /* one touch = one torn cell. `draw.current.sc` is the local truth between store
+     commits, so a fast drag never rolls back the cell torn 40ms earlier. */
   const strokeAt = (clientX, clientY) => {
     if (!ticket || ticket.done || disabled || !def) return;
-    const c = cv.current;
-    if (!c) return;
+    const c = cv.current,
+      D = draw.current;
+    if (!c || !D.ctx) return;
     const r = c.getBoundingClientRect();
     const nx = (clientX - r.left - GX0 * r.width) / (GW * r.width);
     const ny = (clientY - r.top - GY0 * r.height) / (GH * r.height);
@@ -345,26 +473,21 @@ export default function ScratchCard({
     p.y = ny;
     p.t = now;
 
-    const br = st?.brush ?? 0.13;
-    const steps = Math.max(1, Math.min(9, Math.floor((dist * GW * r.width) / Math.max(6, r.width * br * 0.45)) + 1));
-    let res = null;
-    for (let i = 0; i < steps; i++) {
-      const f = (i + 1) / steps;
-      const x = nx - (nx - (p.px ?? nx)) * (1 - f),
-        y = ny - (ny - (p.py ?? ny)) * (1 - f);
-      res = applyDab(ticket, def, x, y, br, strength);
-      draw.current.sc = res.scratch;
-      erase(x, y, br, p.v);
-    }
+    const cur = D.sc || ticket.scratch.slice();
+    const reach = 0.09 + Math.min(0.12, (strength - 1) * 0.008); // the Quarter coin widens the tear
+    const hit = cellsForStroke(p.px ?? nx, p.py ?? ny, nx, ny, reach).filter(i => (cur[i] || 0) < th);
     p.px = nx;
     p.py = ny;
-    if (res) {
-      if (!started) setStarted(true);
-      SFX.scratch(p.v);
-      if (p.v > 0.25) puff(clientX, clientY, p.v > 0.8 ? 2 : 1);
-      navigator.vibrate?.(reduceFx ? 0 : 6);
-      schedule(res);
-    }
+    if (!hit.length) return;
+
+    const res = tearCells({ ...ticket, scratch: cur }, def, hit, strength);
+    D.sc = res.scratch;
+    for (const i of hit) punch(D.ctx, D, i);
+    if (!started) setStarted(true);
+    SFX.tear(hit.length);
+    puff(clientX, clientY, reduceFx ? 1 : 2 + hit.length * 2);
+    navigator.vibrate?.(reduceFx ? 0 : 9 + 4 * hit.length);
+    schedule(res);
   };
 
   const down = e => {
@@ -419,12 +542,12 @@ export default function ScratchCard({
       const r = revealCells(ticket, def, n - (ticket.revealed || 0), strength);
       draw.current.sc = r.scratch;
       for (const i of r.newly) {
+        punch(draw.current.ctx, draw.current, i);
         const [x, y] = cellCenter(i);
-        erase(x, y, (st?.brush ?? 0.13) * 1.05, 0.4);
         const c = cv.current?.getBoundingClientRect();
-        if (c) puff(c.left + (GX0 + x * GW) * c.width, c.top + (GY0 + y * GH) * c.height, 1);
+        if (c) puff(c.left + (GX0 + x * GW) * c.width, c.top + (GY0 + y * GH) * c.height, 2);
       }
-      SFX.scratch(0.75);
+      SFX.tear(1);
       schedule(r);
     }, 190);
     return () => clearInterval(iv);
@@ -453,7 +576,9 @@ export default function ScratchCard({
   if (done && ticket.syIdx != null) {
     for (let i = 0; i < N; i++) if (ticket.grid[i] === ticket.syIdx) hits.push(i);
   }
-  const cov = ticket.scratch?.reduce?.((a, b) => a + Math.min(1, b), 0) / N || 0;
+  // the chip counts *cells opened* — with a paper seal a cell is torn or it isn't, and a
+  // fractional "46%" while every symbol is visible would just be confusing
+  const cov = ((ticket.revealed ?? 0) || (ticket.scratch?.filter?.(v => v >= th).length ?? 0)) / N;
 
   return (
     <div className="tcard-shell">
@@ -472,7 +597,7 @@ export default function ScratchCard({
           if (gloss.current) gloss.current.style.opacity = '0';
         }}>
         <div className="tcard__face">
-          {/* the live card keeps its printed art quiet — the foil panel owns the middle */}
+          {/* the live card keeps its printed art quiet — the seal sits on top of it */}
           <TicketFace def={def} motif={0.2} field={0.16} />
         </div>
 
@@ -540,7 +665,7 @@ export default function ScratchCard({
           <Coin value={st?.coin?.v ?? 1} size={26} skin={skin} />
         </div>
 
-        {!started && !done && !auto ? <div className="hint-scratch">scratch to reveal</div> : null}
+        {!started && !done && !auto ? <div className="hint-scratch">touch the paper</div> : null}
 
         {done ? (
           <div className={cx('stamp', 'show', win ? 'stamp--win' : 'stamp--lose')}>
@@ -549,7 +674,7 @@ export default function ScratchCard({
         ) : null}
       </div>
 
-      <div className="prog" title="foil cleared">
+      <div className="prog" title="cells torn open">
         <Bar value={cov} />
         <span>{Math.round(cov * 100)}%</span>
       </div>

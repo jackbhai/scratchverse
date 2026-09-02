@@ -502,6 +502,13 @@
   .switch.on { background: color-mix(in srgb, var(--accent) 26%, transparent); border-color: color-mix(in srgb, var(--accent) 46%, transparent); }
   .switch.on i { transform: translateX(18px); background: var(--accent); }
 
+  .swatch--paper {
+    display: grid;
+    place-items: center;
+    padding: 5px 8px 4px;
+    background: color-mix(in srgb, var(--surface-1) 70%, transparent);
+    border: var(--hair) solid var(--line);
+  }
   .swatch { border: var(--hair) solid var(--line); box-shadow: 0 1px 0 rgba(255, 255, 255, 0.06) inset; }
 
   .select {
@@ -808,7 +815,7 @@
     pointer-events: none;
     opacity: 0;
     transition: opacity 0.35s;
-    background: radial-gradient(34% 26% at var(--mx, 50%) var(--my, 50%), rgba(255, 255, 255, 0.28), transparent 70%);
+    background: radial-gradient(30% 22% at var(--mx, 50%) var(--my, 50%), rgba(255, 255, 255, 0.1), transparent 72%);
     mix-blend-mode: screen;
   }
   .payline { overflow: visible; }
@@ -830,7 +837,7 @@
     transition: opacity 0.4s;
     mix-blend-mode: screen;
   }
-  .tcard:hover .tcard__sheen { opacity: 1; animation: sheen 2.6s ease-in-out infinite; }
+  .tcard:hover .tcard__sheen { opacity: 0.5; animation: sheen 5.2s ease-in-out infinite; }
   @keyframes sheen { 0% { transform: translateX(-70%); } 60%, 100% { transform: translateX(70%); } }
 
   .coin-cur {
@@ -917,9 +924,10 @@
     position: absolute;
     width: 10px;
     height: 7px;
-    border-radius: 2px 4px 3px 5px;
-    background: linear-gradient(160deg, var(--gold-hi), var(--gold) 45%, var(--gold-lo));
-    opacity: 0.95;
+    border-radius: 1px 5px 2px 6px;
+    background: linear-gradient(160deg, #fff 0%, #efe9dc 52%, #d5c9ad 100%);
+    box-shadow: inset 0 0 0 0.5px rgba(0, 0, 0, 0.08);
+    opacity: 0.96;
     will-change: transform, opacity;
   }
   .empty {
@@ -944,7 +952,7 @@
     z-index: 92;
     left: 0;
     right: 0;
-    top: max(env(safe-area-inset-top), 8px);
+    top: calc(env(safe-area-inset-top, 0px) + 98px);
     display: grid;
     justify-items: center;
     gap: 5px;

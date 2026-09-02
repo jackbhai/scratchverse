@@ -45,6 +45,11 @@ w.HTMLCanvasElement.prototype.getContext = function () {
     { get: (t, k) => (k in t ? t[k] : noop), set: () => true }
   );
 };
+// WAAPI: jsdom has none, and the visual layer must degrade, not crash
+w.Element.prototype.animate = function () {
+  const a = { finished: Promise.resolve(), cancel: noop, play: noop, pause: noop, onfinish: null };
+  return a;
+};
 w.HTMLElement.prototype.setPointerCapture = noop;
 w.HTMLElement.prototype.releasePointerCapture = noop;
 global.self = w;

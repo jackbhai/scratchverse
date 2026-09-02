@@ -180,20 +180,41 @@ export function rollTicket(s, ticket) {
 export const cellThreshold = (ticket, strength = 10) =>
   Math.max(0.22, Math.min(0.9, 0.3 + (1 - (HARDNESS_DAB[ticket.hardness] || 0.9)) * 1.15 - (strength - 1) * 0.022));
 
-export function applyDab(t, ticket, cx, cy, r, strength) {
+export function cellsForStroke(x0, y0, x1, y1, pad = 0.07) {
+  const out = [];
+  const seen = new Set();
+  const steps = Math.max(1, Math.ceil(Math.hypot(x1 - x0, y1 - y0) * 26));
+  const ring = pad > 0.17 ? 1 : 0; // a wide brush (Quarter coin rush) also takes the neighbours
+  for (let i = 0; i <= steps; i++) {
+    const f = i / steps;
+    const x = x0 + (x1 - x0) * f,
+      y = y0 + (y1 - y0) * f;
+    const c0 = Math.max(0, Math.min(2, Math.floor(x * 3))),
+      r0 = Math.max(0, Math.min(2, Math.floor(y * 3)));
+    for (let r = Math.max(0, r0 - ring); r <= Math.min(2, r0 + ring); r++)
+      for (let c = Math.max(0, c0 - ring); c <= Math.min(2, c0 + ring); c++) {
+        const gx = (c + 0.5) / 3,
+          gy = (r + 0.5) / 3;
+        if (Math.abs(x - gx) > 1 / 6 + pad || Math.abs(y - gy) > 1 / 6 + pad) continue;
+        const k = r * 3 + c;
+        if (!seen.has(k)) {
+          seen.add(k);
+          out.push(k);
+        }
+      }
+  }
+  return out;
+}
+
+/** Tear the paper seal off the given cells in one go — the pointer's whole model of scratching. */
+export function tearCells(t, ticket, cells, strength = 10) {
   const th = cellThreshold(ticket, strength);
   const sc = t.scratch.slice();
   const newly = [];
-  const R = Math.max(0.06, r);
-  for (let i = 0; i < CELLS; i++) {
-    const gx = ((i % 3) + 0.5) / 3,
-      gy = (Math.floor(i / 3) + 0.5) / 3;
-    const d = Math.hypot(cx - gx, cy - gy);
-    if (d > R * 1.3) continue;
-    const k = Math.max(0, 1 - d / (R * 1.3));
-    const before = sc[i];
-    sc[i] = Math.min(1, sc[i] + (0.55 + 0.65 * k * k) * (HARDNESS_DAB[ticket.hardness] || 0.9) * (0.6 + strength / 26));
-    if (before < th && sc[i] >= th) newly.push(i);
+  for (const i of cells) {
+    if (i == null || i < 0 || i >= sc.length || sc[i] >= th) continue;
+    sc[i] = 1;
+    newly.push(i);
   }
   const coverage = sc.reduce((a, b) => a + Math.min(1, b), 0) / CELLS;
   const revealed = sc.filter(v => v >= th).length;

@@ -608,10 +608,10 @@ export const ACHIEVEMENTS = [
 
 /* ---------- Night Market (tokens + coin cosmetics) ---------- */
 export const SKINS = [
-  { id: 'gold', name: 'Champagne Gold', foil: 'gold', tok: 0, coin: 0, note: 'the house coating' },
-  { id: 'rose', name: 'Rose Alloy', foil: 'rose', tok: 3, coin: 25000, note: 'warm copper sheen' },
-  { id: 'neon', name: 'Ice Neon', foil: 'neon', tok: 6, coin: 5e6, note: 'cold holographic' },
-  { id: 'platinum', name: 'Platinum Weave', foil: 'platinum', tok: 10, coin: 5e8, note: 'brushed platinum' },
+  { id: 'gold', name: 'Ivory Deckle', foil: 'gold', tok: 0, coin: 0, note: 'the house stock, warm white' },
+  { id: 'rose', name: 'Rose Wash', foil: 'rose', tok: 3, coin: 25000, note: 'blush cotton, copper ink' },
+  { id: 'neon', name: 'Ice Laid', foil: 'neon', tok: 6, coin: 5e6, note: 'cool laid paper, teal ink' },
+  { id: 'platinum', name: 'Pressed Platinum', foil: 'platinum', tok: 10, coin: 5e8, note: 'bright white, silver ink' },
 ];
 export const MATS = [
   { id: 'noir', name: 'Pure Noir', tok: 0, note: 'matte black, default' },

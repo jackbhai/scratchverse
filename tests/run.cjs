@@ -177,19 +177,46 @@ module.exports.run = async function run() {
     return L.applyHazards(shielded, turtle, t).hazardHit !== true;
   })());
 
-  // dab engine
+  // the tear engine: one touch takes a whole cell off the seal
+  const tearBad = [];
   let t = L.rollTicket(s0, twoWin);
-  let guard = 0, prevCov = -1, mono = true, prevRev = -1;
-  while (guard++ < 120) {
-    const i = guard % 9;
-    const r = L.applyDab(t, twoWin, (i % 3 + 0.5) / 3, (Math.floor(i / 3) + 0.5) / 3, 0.13, 10);
+  let prevCov = -1, mono = true, prevRev = -1, torn = [];
+  for (let i = 0; i < 9; i++) {
+    const [cx, cy] = [(i % 3 + 0.5) / 3, (Math.floor(i / 3) + 0.5) / 3];
+    const r = L.tearCells(t, twoWin, L.cellsForStroke(cx, cy, cx, cy, 0), 10);
     if (r.coverage < prevCov - 1e-9 || r.revealed < prevRev) mono = false;
-    prevCov = r.coverage; prevRev = r.revealed;
+    prevCov = r.coverage;
+    prevRev = r.revealed;
+    if (!(r.newly.length === 1 && r.newly[0] === i)) tearBad.push(`${i}: newly=${JSON.stringify(r.newly)}`);
+    if (r.scratch[i] !== 1) tearBad.push(`${i}: cell not fully torn (${r.scratch[i]})`);
+    torn.push(...r.newly);
     t = { ...t, scratch: r.scratch, revealed: r.revealed, coverage: r.coverage };
-    if (r.complete) break;
   }
-  ok('cell-targeted dabs finish the card', t.revealed === 9 || t.coverage >= 0.55, `cov=${t.coverage.toFixed(2)} rev=${t.revealed}`);
+  ok('a touch always opens exactly the cell it lands on', tearBad.length === 0, tearBad.slice(0, 4).join(' | '));
+  ok('9 tears clear the seal', t.revealed === 9 && t.coverage === 1, `cov=${t.coverage.toFixed(2)} rev=${t.revealed}`);
   ok('coverage + reveal grow monotonically', mono);
+  ok('no cell tears twice', new Set(torn).size === torn.length && torn.length === 9, `${torn.length} tears, ${new Set(torn).size} cells`);
+  {
+    // re-touching a torn cell is a no-op (paper cannot be torn twice)
+    const again = L.tearCells(t, twoWin, [0, 1], 10);
+    ok('tearing an already-open cell does nothing', again.newly.length === 0 && again.coverage === 1, JSON.stringify(again.newly));
+  }
+  {
+    // 5 of 9 torn = 55% coverage, which is where AUTO_AT takes the card home
+    let e = L.rollTicket(s0, twoWin), autoAtComplete = false;
+    for (let i = 0; i < 5; i++) {
+      const [cx, cy] = [(i % 3 + 0.5) / 3, (Math.floor(i / 3) + 0.5) / 3];
+      const rr = L.tearCells(e, twoWin, L.cellsForStroke(cx, cy, cx, cy, 0), 10);
+      e = { ...e, scratch: rr.scratch };
+      autoAtComplete = rr.complete;
+    }
+    ok('AUTO_AT completes the seal at 5/9 torn (no need to clear all 9)', autoAtComplete === true, `cov=${(5 / 9).toFixed(3)}`);
+    const row = L.cellsForStroke(0.16, 0.5, 0.84, 0.5, 0.09);
+    ok('a single horizontal swipe tears the whole middle row', row.length === 3 && row.join() === '3,4,5', JSON.stringify(row));
+    const wide = L.cellsForStroke(0.16, 0.5, 0.16, 0.5, 0.2);
+    ok('a wide brush (Quarter coin rush) also takes the neighbours', wide.length >= 3, JSON.stringify(wide));
+  }
+  ok('cell-targeted tears finish the card', t.revealed === 9, `rev=${t.revealed}`);
   t = L.rollTicket(s0, TICKET_BY_ID.appletree);
   const rr = L.revealCells(t, TICKET_BY_ID.appletree, 9, 10);
   eq('revealCells opens all 9', rr.revealed, 9);
@@ -268,7 +295,8 @@ module.exports.run = async function run() {
   // scratch to completion through the SCRATCH action
   let cur = st.table, k = 0;
   while (k++ < 300) {
-    const r = L.applyDab(cur, twoWin, (k % 3) / 2, (Math.floor(k / 3) % 3) / 2, 0.16, 10);
+    const [sx, sy] = [(k % 3) / 2, (Math.floor(k / 3) % 3) / 2];
+    const r = L.tearCells(cur, twoWin, L.cellsForStroke(sx, sy, sx, sy, 0.05), 10);
     st = reducer(st, { type: 'SCRATCH', scratch: r.scratch, revealed: r.revealed, coverage: r.coverage, newly: r.newly });
     cur = st.table;
     if (r.complete) break;
@@ -407,10 +435,8 @@ module.exports.run = async function run() {
   ok('tab: Table', clickText(/^\s*Table/));
   await sleep(300);
   const tableBtns = buttons().filter(b => /Buy /.test(b.textContent || ''));
-  console.log('   [dbg] buy-ish buttons:', tableBtns.map(b => `${JSON.stringify(b.textContent)} dis=${b.disabled} cls=${b.className}`).join(' | ').slice(0, 300));
   ok('buy button on table works', clickText(/Buy /));
   await sleep(400);
-  console.log('   [dbg] toasts:', (root.querySelector('.toasts')?.textContent || 'none').slice(0, 120));
   const hasCard = !!root.querySelector('#scratchCv');
   ok('canvas mounted after buying', hasCard, 'dom:' + (root.textContent || '').replace(/\s+/g, ' ').slice(0, 260));
   // ── a real finger scratch: pointer events on the canvas must drive the engine
@@ -428,8 +454,7 @@ module.exports.run = async function run() {
       return m ? +m[1] : 0;
     };
     fire('pointerdown', 55, 75); await sleep(120); fire('pointerup', 55, 75); await sleep(200);
-    console.log('   [dbg] after one dab → hint hidden?', !/scratch to reveal/.test(root.textContent || ''), 'prog:', (root.querySelector('.prog')?.textContent || 'none').trim());
-    fire('pointerdown', 55, 75);
+      fire('pointerdown', 55, 75);
     const p0 = prog();
     const swipe = async (sx, sy, ex, ey) => {
       fire('pointerdown', sx, sy);
@@ -440,21 +465,24 @@ module.exports.run = async function run() {
       fire('pointerup', ex, ey);
       await sleep(60);
     };
-    // one swipe per row of the 3×3 grid, then repeat passes until the card resolves
+    // one swipe per row of the 3×3 seal; the card may resolve mid-way (AUTO_AT) and
+    // leave the table, so progress is measured after every single row
     let maxProg = p0, sawOpenCells = 0, resolved = false, lvlBefore = (root.querySelector('.progress-row')?.textContent || '').trim();
-    for (let pass = 0; pass < 8; pass++) {
-      for (let row = 0; row < 3; row++) await swipe(55, 75 + row * 125, 255, 75 + row * 125);
-      maxProg = Math.max(maxProg, prog());
-      sawOpenCells = Math.max(sawOpenCells, root.querySelectorAll('.cell.open').length);
-      const hint = (root.querySelector('.sect .hint')?.textContent || '').trim();
-      if (hint !== 'scratch the foil') { resolved = true; break; }
+    for (let pass = 0; pass < 8 && !resolved; pass++) {
+      for (let row = 0; row < 3; row++) {
+        await swipe(55, 75 + row * 125, 255, 75 + row * 125);
+        maxProg = Math.max(maxProg, prog());
+        sawOpenCells = Math.max(sawOpenCells, root.querySelectorAll('.cell.open').length);
+        const hint = (root.querySelector('.sect .hint')?.textContent || '').trim();
+        if (hint !== 'touch the paper' || !root.querySelector('#scratchCv')) { resolved = true; break; }
+      }
     }
     const balTxt = (root.querySelector('.pill--gold .tabular')?.textContent || '').trim();
     const lvlAfter = (root.querySelector('.progress-row')?.textContent || '').trim();
     await sleep(300);
     ok('finger strokes reveal coverage', maxProg > p0, `${p0}% → ${maxProg}%`);
-    ok('scratch drives the store (foil cells open up)', sawOpenCells > 0, `${sawOpenCells} open cells`);
-    ok('finishing the card resolves the ticket', resolved, 'never resolved');
+    ok('scratch drives the store (cells tear open)', sawOpenCells > 0, `${sawOpenCells} open cells`);
+    ok('the torn seal resolves the ticket', resolved, 'never resolved');
     ok('a resolved ticket leaves the table', /No ticket on the table/.test(root.textContent || ''), 'still on table');
     ok('XP / progress moved after the scratch', lvlBefore !== lvlAfter || maxProg > 40, `${lvlBefore} vs ${lvlAfter}`);
     ok('balance is rendered as a number', /^[0-9.]+[KMBTQa-z]*$/.test(balTxt), balTxt);
@@ -505,14 +533,15 @@ module.exports.run = async function run() {
       const by0 = (GY0 + Math.floor(i / 3) / 3 * GH) * cardHpx, by1 = (GY0 + (Math.floor(i / 3) + 1) / 3 * GH) * cardHpx;
       if (!(cxPix > bx0 && cxPix < bx1 && cyPix > by0 && cyPix < by1)) geoBad.push(`${i}: ${cxPix.toFixed(0)},${cyPix.toFixed(0)} outside ${bx0.toFixed(0)}-${bx1.toFixed(0)}/${by0.toFixed(0)}-${by1.toFixed(0)}`);
       // and the engine agrees the brush at that fraction lands on cell i only
+      // and the engine agrees: a touch at that fraction tears cell i and nothing else
       const t0 = { scratch: Array(9).fill(0), id: 'g' + i };
-      const r = L.applyDab(t0, twoWin, fx, fy, 0.055, 10);
-      if (!(r.newly.length === 0)) { /* needs 2 dabs at hardness 1 threshold — fine, just check coverage shape */ }
-      const r2 = L.applyDab({ ...t0, scratch: r.scratch }, twoWin, fx, fy, 0.055, 10);
-      const opened = r2.scratch.map((v, k) => v >= L.cellThreshold(twoWin, 10) ? k : -1).filter((k) => k >= 0);
-      if (opened.length && !opened.every((k) => k === i)) geoBad.push(`${i}: brush also opened ${opened}`);
+      const hit = L.cellsForStroke(fx, fy, fx, fy, 0);
+      if (!(hit.length === 1 && hit[0] === i)) geoBad.push(`${i}: touch mapped to ${JSON.stringify(hit)}`);
+      const r2 = L.tearCells(t0, twoWin, hit, 10);
+      const opened = r2.scratch.map((v, k) => (v >= L.cellThreshold(twoWin, 10) ? k : -1)).filter(k => k >= 0);
+      if (!opened.length || !opened.every(k => k === i)) geoBad.push(`${i}: tear opened ${opened}`);
     }
-    ok('every cell centre maps inside its own grid box + brush opens only that cell', geoBad.length === 0, geoBad.join(' | '));
+    ok('every cell centre maps inside its own grid box + a tear opens only that cell', geoBad.length === 0, geoBad.join(' | '));
     ok('canvas aspect + grid fractions match the CSS (--gx/--gy/--gw/--gh)', GW === 0.86 && GH === 0.60);
   }
 

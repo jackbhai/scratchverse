@@ -4,7 +4,21 @@
 import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { TICKETS, TICKET_BY_ID, MATS, SKINS, COINS } from '../../src/game/config.js';
-import { Coin, Crest, Engraving, MATS_CSS, SKIN_METAL, TicketFace, foilSvg, guilloche, metalCss, rng } from '../../src/ui/art.jsx';
+import {
+  Coin,
+  Crest,
+  Engraving,
+  MATS_CSS,
+  PAPER,
+  PAPER_OF,
+  PaperSwatch,
+  SKIN_METAL,
+  TicketFace,
+  guilloche,
+  metalCss,
+  paperCss,
+  rng,
+} from '../../src/ui/art.jsx';
 
 const VECTOR_ONLY = html => {
   expect(html).not.toMatch(/<image/i);
@@ -57,7 +71,7 @@ describe('TicketFace', () => {
 });
 
 describe('metals and mats', () => {
-  it('every skin paints from a metal key, not an image key', () => {
+  it('every skin paints from a CSS/SVG key, not an image key', () => {
     for (const s of SKINS) {
       expect(SKIN_METAL[s.foil]).toBeTruthy();
       const css = metalCss(s.foil);
@@ -75,22 +89,45 @@ describe('metals and mats', () => {
     }
   });
 
-  it('the foil source is an inline SVG data URI', () => {
-    const uri = foilSvg('gold');
-    expect(uri.startsWith('data:image/svg+xml')).toBe(true);
-    expect(uri).not.toMatch(/https?:/);
-    expect(decodeURIComponent(uri)).toContain('<linearGradient');
-  });
-
-  it('coins and the crest render', () => {
-    for (const c of COINS) VECTOR_ONLY(renderToStaticMarkup(<Coin value={c.v} size={20} skin="rose" />));
-    const crest = renderToStaticMarkup(<Crest size={32} />);
-    expect(crest).toContain('SV');
-    VECTOR_ONLY(crest);
+  it('every coating ships a paper stock and a swatch, with no bitmap involved', () => {
+    for (const sk of SKINS) {
+      const q = PAPER_OF(sk.foil);
+      expect(q.stock).toMatch(/^#[0-9a-f]{6}$/i);
+      expect(q.ink).toMatch(/^#[0-9a-f]{6}$/i);
+      expect(PAPER[sk.foil]).toBe(q);
+      expect(PAPER_OF(`ghost-${sk.id}`)).toBe(PAPER.gold); // an unknown stock never blanks the card
+      const css = paperCss(sk.foil);
+      expect(css).toContain('linear-gradient');
+      expect(css).toContain(q.stock);
+      expect(css).not.toContain('url('); // nothing is fetched
+      const html = renderToStaticMarkup(<PaperSwatch skin={sk.foil} />);
+      expect(html).toContain('<svg');
+      expect(html).toContain(q.stock);
+      const pts = /points="([^"]+)"/.exec(html);
+      expect(pts, 'the swatch is a torn polygon').toBeTruthy();
+      expect(pts[1].trim().split(/\s+/).length).toBeGreaterThanOrEqual(40);
+      expect(/<image|xlink:href|\.png|\.jpg|\.webp/i.test(html)).toBe(false);
+    }
   });
 });
 
 describe('engraving generator', () => {
+  it('mints every coin tier as an SVG coin, sized by value', () => {
+    const sizes = [];
+    for (const c of COINS) {
+      const html = renderToStaticMarkup(<Coin value={c.v} size={30} skin="rose" />);
+      expect(html).toContain('<svg');
+      expect(html).not.toMatch(/<image|\.png|\.jpg|\.webp|https?:\/\//i);
+      for (const m of html.matchAll(/url\(#([^)]+)\)/g)) expect(html).toContain(`id="${m[1]}"`); // gradients are local, never fetched
+      expect(html).toContain(SKIN_METAL.rose.hi); // coins stay metal even when the seal is paper
+      sizes.push(html.length);
+    }
+    expect(COINS.length).toBeGreaterThanOrEqual(5);
+    expect(Math.max(...sizes) - Math.min(...sizes)).toBeGreaterThan(0); // tiers differ in art
+    VECTOR_ONLY(renderToStaticMarkup(<Crest size={32} />));
+    expect(renderToStaticMarkup(<Crest size={32} />)).toContain('SV');
+  });
+
   it('is deterministic per seed', () => {
     const seq = k => [rng(k)(), rng(k)(), rng(k)()].map(x => x.toFixed(6)).join(',');
     expect(seq('twowin')).toBe(seq('twowin'));

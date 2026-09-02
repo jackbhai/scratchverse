@@ -11,7 +11,21 @@ import { metalCss } from './art.jsx';
 
 export { Icon };
 export { hasIcon, iconNames } from './icons.jsx';
-export { Coin, Crest, Engraving, MATS_CSS, SKIN_METAL, TicketFace, foilSvg, guilloche, metalCss, rng } from './art.jsx';
+export {
+  Coin,
+  Crest,
+  Engraving,
+  MATS_CSS,
+  PAPER,
+  PAPER_OF,
+  PaperSwatch,
+  SKIN_METAL,
+  TicketFace,
+  guilloche,
+  metalCss,
+  paperCss,
+  rng,
+} from './art.jsx';
 
 export const cx = (...a) => a.filter(Boolean).join(' ');
 const REDUCED =

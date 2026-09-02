@@ -31,7 +31,7 @@ It is landscape, pixel-art, mouse-driven, table-of-cards metaphor.
 | 16 | Prestige + Jack Points | "JP" chip top-left, `Prestige (2)` button, permanent tree |
 | 17 | Achievements (34) + tokens | badge chip top-left; tokens are a second currency |
 | 18 | Night Market | spend tokens on cosmetics (12 in patch 1.1), gadget customization |
-| 19 | Cosmetics: foils / skins | card + coating colour themes |
+| 19 | Cosmetics: seal stocks / skins | card + coating colour themes |
 | 20 | The phone / Corporation | red rotary phone on the table, late-game "Win Everything" events |
 | 21 | Final Chance + endings | huge ticket, "Claim"/"Wait 5 min" → Faithful Servant secret ending |
 | 22 | Save export / import code | Settings → Export Save string, import to move progress |
@@ -44,7 +44,7 @@ It is landscape, pixel-art, mouse-driven, table-of-cards metaphor.
 |---|---|
 | landscape pixel table | **portrait**, AMOLED-black UI, all-vector chrome (no bitmaps at all) |
 | coin cursor | **finger scratch** w/ pressure-ish speed response, haptics, per-coin brush sizes |
-| silver coating | **painted metal foil** (champagne gold / rose / ice neon / platinum) drawn from an SVG gradient + engraved guilloché, torn-lip glints, WAAPI shavings |
+| silver coating | **a torn paper seal** in four stocks (Ivory Deckle / Rose Wash / Ice Laid / Pressed Platinum): laid lines, fibres, deckled edge, letterpress stamp, ragged holes with hanging slivers, WAAPI paper shreds |
 | symbol panel | animated odds sheet + EV% + "fairness" maths shown |
 | bot on table | **bot stage**: engraved bot glyph (diamond-crested once Jack Echo is bought), live scratch, feed log |
 | fan | Fan gadget = auto-feed queue → table with flying-card animation |
@@ -60,7 +60,7 @@ It is landscape, pixel-art, mouse-driven, table-of-cards metaphor.
 
 ## D. Ours is *better* because
 1. Portrait + one-thumb reach (top bar, bottom tabs) vs mouse-only desktop layout.
-2. Real foil physics-ish feel: soft brush, coverage-driven per-cell reveal, auto-complete at 55%.
+2. One-touch tearing: a cell's paper comes off whole (no half-rubbed cells), auto-complete at 55% coverage.
 3. ASMR layered audio synthesized at runtime (no downloads, works offline) + vibration.
 4. Hard-stuck protection: **pity meter** + **peek-before-claim** (a fair upgrade over the bot trade-off)
    and **toss-for-refund** so a bad ticket can't end your run.
@@ -78,7 +78,7 @@ dist is 1.4 MB (172 kB JS + 32 kB CSS + 115 kB fonts) and the app has zero image
 | original element | ScratchVerse now |
 |---|---|
 | unique artwork per ticket | every ticket's face is **generated from its own data** (`TicketFace`): PRNG-seeded guilloché field, double hairline frame, catalogue + price rail, motif glyph, name plate. Same drawing on the table, catalogue rows, tray and mat thumbs — and 13/13 are bespoke, not 10/13 |
-| metallic scratch foil | the canvas *paints* it: `foilSvg(skin)` → `createPattern`, security-line engraving, per-cell wells, catalogue tint overlay, vignette, microprint band. Re-tinted by skin, never a texture file |
+| metallic scratch foil | the canvas *paints* a paper seal instead: laid + chain lines, 420 seeded fibres, a curl gradient, letterpress ticket stamp, dimpled cell wells, deckled silhouette with its own drop shadow. Stock and ink are re-tinted by the equipped coating, never a texture file |
 | wooden table | five CSS-only table themes (`MATS_CSS`): Pure Noir default, Oxblood Felt free, then Emerald Felt / Graphite Desk / Platinum Rail as Night-Market token unlocks |
 | coin cursor that scales with Iron Coin | a gold-coin ghost follows the pointer over the card, sized from `stats(s).brush`, hidden on touch and in reduce-effects mode |
 | red rotary phone on the table | inline-SVG phone prop in the table header; shakes + red dot while the Corporation call is queued, opens the endings sheet |
@@ -97,7 +97,7 @@ what is genuinely identical, what is an approximation, and what is missing.
 
 | System | Original | ScratchVerse |
 |---|---|---|
-| Scratch engine | drag to remove foil, whole card clears at a threshold | same, plus per-cell threshold from hardness/coin, 55 % auto-complete, `reveal-cells` debug hook |
+| Scratch engine | drag to remove foil, whole card clears at a threshold | simpler: one touch tears a whole cell (hardness only changes the tear's reach), 55 % auto-complete, `reveal-cells` debug hook |
 | Tickets / catalogues | 4 catalogues, early + late game | 13 tickets / 4 catalogues, per-ticket art, symbol tables, hazard tickets |
 | Gadgets | Bot, Fan, Sticky Mat, Mundo, Autobuyer, Egg Timer, Spellbook, Machine | all 8, same roles (bot scratches what you drop in it, fan pushes tickets, mat is the no-move zone, Mundo claims, egg speeds everything but the Machine) |
 | Coins / brush size | 5 coin tiers change scratch radius | 5 tiers, each with `r` + unlock gate |
@@ -105,7 +105,7 @@ what is genuinely identical, what is an approximation, and what is missing.
 | Prestige | Jack Points, permanent nodes | 7-node JP tree, `PRESTIGE_BASE` 2.5e7 |
 | Day Job | wash plates for non-ticket income, plates can break | plate-washing card + `job` upgrade + break risk |
 | Hazards | Sea Turtle punishes over-scratching, Sand Dollars penalty cells | both, plus Hazard Shield JP node |
-| Night Market | achievement tokens → cosmetics | 4 metal coatings + 5 table themes, all vector; swatches are the same `metalCss`/`MATS_CSS` the app actually paints with |
+| Night Market | achievement tokens → cosmetics | 4 paper stocks + 5 table themes, all vector; the swatch is the same `paperCss`/`MATS_CSS` the app actually paints with |
 | Endings | phone call / Corporation finale | Claim / hang up / 60-second "hands off" sheet with badges |
 | Save | local save, export/import in settings | IndexedDB + `SV1.` export/import code, offline PWA |
 
@@ -114,7 +114,7 @@ what is genuinely identical, what is an approximation, and what is missing.
 - **Audio** — the original ships recorded ASMR scratching; here every cue is synthesized in WebAudio
   (filtered noise bursts whose pitch follows scratch speed). Zero downloads, but it is not the same recording.
 - **Animations** — built from written descriptions and layout notes of the original, never frame-compared
-  against its video: foil tears, symbol `pop`, stamp, coin rain, phone ring-shake, bot bob, screen fade.
+  against its video: paper tears, symbol `pop`, stamp, coin rain, phone ring-shake, bot bob, screen fade.
   Nothing was "captured" from the original's footage, so treat per-animation fidelity as designed, not matched.
 - **Symbol art** — the original draws little pixel illustrations; here every symbol is a monoline icon from
   `src/ui/icons.jsx` (90+ glyphs, one stroke weight, colour-coded by catalogue). Same information, different medium.

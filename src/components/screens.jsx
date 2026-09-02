@@ -33,7 +33,22 @@ import { fmt, fmtFull, pct, mmss, untilNextMidnight } from '../game/fmt.js';
 import { todayKey } from '../db/store.js';
 import { useGame, dispatch as push } from '../store.js';
 import ScratchCard from './ScratchCard.jsx';
-import { Bar, Chip, Coin, Crest, Icon, Lv, MATS_CSS, Modal, Stat, Switch, TicketFace, cx, metalCss } from '../ui/base.jsx';
+import {
+  Bar,
+  Chip,
+  Coin,
+  Crest,
+  Icon,
+  Lv,
+  MATS_CSS,
+  Modal,
+  PaperSwatch,
+  Stat,
+  Switch,
+  TicketFace,
+  cx,
+  metalCss,
+} from '../ui/base.jsx';
 import SFX from '../game/sound.js';
 
 const payLabel = (pay, price) => {
@@ -232,7 +247,7 @@ export function TableScreen() {
               ? s.table.settled
                 ? 'resolved'
                 : 'ready to claim'
-              : 'scratch the foil'
+              : 'touch the paper'
             : `${(s.tray || []).length} in tray`}
         </span>
       </div>
@@ -984,7 +999,9 @@ export function ProfileScreen() {
               type="button"
               className={cx('card shopitem', s.skin === k.id && 'shopitem--on')}
               onClick={() => push({ type: 'SKIN', id: k.id })}>
-              <div className="swatch" style={{ height: 46, borderRadius: 12, background: metalCss(k.id) }} />
+              <div className="swatch swatch--paper">
+                <PaperSwatch skin={k.id} label={k.id === 'gold' ? 'ivory' : k.id} />
+              </div>
               <div className="h3" style={{ fontSize: 13, marginTop: 8 }}>
                 {k.name}
               </div>

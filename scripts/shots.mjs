@@ -342,8 +342,14 @@ await scratch([[0.05, 0.16, 0.62, 0.17]], 7); // one finger pass over the top ro
 await wait(700);
 await shot('06-mid-scratch');
 await st('mid scratch');
-await scratch(hatch(6), 9); // cross-hatch the rest
-await wait(650);
+// the seal tears in one pass, so the card is opened with the reveal tool:
+// all nine symbols visible, the ticket still on the table (nothing claimed yet)
+await page
+  .locator('[aria-label="Reveal all"]')
+  .first()
+  .click()
+  .catch(() => {});
+await wait(750);
 await shot('07-revealed');
 /* a fresh card caught mid-scratch (only one corner scratched) — the money shot */
 await page
@@ -405,7 +411,7 @@ if (await nm.count()) {
   // prove the cosmetics are real: equip a different metal + mat, then re-shoot the card
   await page
     .locator('.shopitem')
-    .filter({ hasText: /Ice Neon/i })
+    .filter({ hasText: /Ice Laid/i })
     .click()
     .catch(() => {});
   await wait(400);
@@ -509,7 +515,7 @@ await ctxC.close();
     .catch(() => {});
   await pd
     .locator('.shopitem')
-    .filter({ hasText: /Rose Alloy/i })
+    .filter({ hasText: /Rose Wash/i })
     .click()
     .catch(() => {});
   await pd
@@ -540,8 +546,8 @@ await ctxC.close();
     }
     await pd.mouse.up();
     await pd.waitForTimeout(500);
-    await pd.locator('.tcard').screenshot({ path: `${OUT}/19-rose-metal.png` });
-    log('  ✓ 19-rose-metal (skin + mat swap painted on the foil)');
+    await pd.locator('.tcard').screenshot({ path: `${OUT}/19-rose-stock.png` });
+    log('  ✓ 19-rose-stock (paper stock + mat swap on the seal)');
   } else log('  – 19 rose metal (no card)');
   await ctxD.close();
 }

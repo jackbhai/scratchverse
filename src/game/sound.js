@@ -116,6 +116,17 @@ const _SFX = {
     lastScratch = now;
     noise({ dur: 0.055, g: 0.05 + 0.06 * v, f: 1200 + 2600 * v, rate: 0.85 + v * 0.7 });
   },
+  tear(n = 1) {
+    // a paper rip: broadband noise that loses energy fast, plus one fibre snap
+    const now = performance.now();
+    if (now - lastScratch < 26) return;
+    lastScratch = now;
+    const k = Math.min(3, Math.max(1, n));
+    for (let i = 0; i < k; i++) {
+      noise({ dur: 0.05 + 0.03 * i, g: 0.07 - 0.012 * i, f: 2600 - 500 * i, rate: 1.25 - 0.18 * i, delay: i * 0.022 });
+    }
+    tone({ f: 2100, to: 900, type: 'triangle', dur: 0.035, g: 0.028, delay: 0.018 });
+  },
   reveal() {
     tone({ f: 900, to: 1500, type: 'sine', dur: 0.09, g: 0.07 });
     buzz(5);
